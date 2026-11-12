@@ -1,0 +1,45 @@
+{
+  "name": "kapkup",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "kapkup": "tsx scripts/kapkup-cli.ts"
+  },
+  "dependencies": {
+    "@remotion/bundler": "^4.0.543",
+    "@remotion/captions": "4.0.543",
+    "@remotion/install-whisper-cpp": "4.0.543",
+    "@remotion/player": "^4.0.543",
+    "@remotion/renderer": "^4.0.543",
+    "clsx": "^2.1.1",
+    "immer": "^11.2.10",
+    "lucide-react": "^1.72.0",
+    "nanoid": "^6.0.2",
+    "next": "16.4.6",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "remotion": "^4.0.543",
+    "sonner": "^2.0.8",
+    "tailwind-merge": "^3.7.0",
+    "zod": "^4.6.7",
+    "zustand": "^5.1.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/turbopack": "4.3.3",
+    "@types/node": "^24.19.2",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.6",
+    "tailwindcss": "4.3.3",
+    "tsx": "^4.23.15",
+    "typescript": "^5",
+    "vitest": "^5.1.0"
+  }
+}

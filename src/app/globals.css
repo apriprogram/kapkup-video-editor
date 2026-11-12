@@ -1,0 +1,134 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Token warna Kapkup. Satu-satunya tempat nilai warna ditulis.
+ * Warna brand (primary) masih SEMENTARA: aksen cyan untuk gaya editor video gelap.
+ * Ganti di sini kalau warna brand Kapkup sudah ditentukan.
+ */
+:root {
+  --background: #f4f4f5;
+  --foreground: #09090b;
+  --surface: #ffffff;
+  --surface-foreground: #09090b;
+  --muted: #e9e9ec;
+  --muted-foreground: #5f5f68;
+  --border: #d9d9de;
+  --input: #c9c9d0;
+  --primary: #0e7c86;
+  --primary-foreground: #ffffff;
+  --ring: #0e7c86;
+  --danger: #dc2626;
+  --success: #16a34a;
+  --warning: #b45309;
+  --stage: #d4d4d8;
+  --item-video: #0e7c86;
+  --item-audio: #2563eb;
+  --item-text: #c2570c;
+  --item-fx: #7c3aed;
+  --item-foreground: #ffffff;
+  --playhead: #09090b;
+}
+
+.dark {
+  --background: #0e0e10;
+  --foreground: #ececef;
+  --surface: #1a1a1e;
+  --surface-foreground: #ececef;
+  --muted: #26262b;
+  --muted-foreground: #9c9ca6;
+  --border: #2f2f36;
+  --input: #3a3a42;
+  --primary: #22cfe0;
+  --primary-foreground: #04191c;
+  --ring: #22cfe0;
+  --danger: #f05252;
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --stage: #070708;
+  --item-video: #136a73;
+  --item-audio: #24509c;
+  --item-text: #a4521f;
+  --item-fx: #5b3fa6;
+  --item-foreground: #f4f4f5;
+  --playhead: #ffffff;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-foreground: var(--surface-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-ring: var(--ring);
+  --color-danger: var(--danger);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-stage: var(--stage);
+  --color-item-video: var(--item-video);
+  --color-item-audio: var(--item-audio);
+  --color-item-text: var(--item-text);
+  --color-item-fx: var(--item-fx);
+  --color-item-foreground: var(--item-foreground);
+  --color-playhead: var(--playhead);
+  --font-sans: system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+}
+
+/* Scrollbar tipis supaya panel editor tidak terasa berat */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--input) transparent;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+input[type="range"] {
+  accent-color: var(--primary);
+}
+
+/*
+ * Tema Garuda Nexa: mengikuti panel admin Garuda Nexa (kanvas gelap, kartu
+ * membulat bergaris tipis, aksen kobalt). Dipakai halaman depan; editor tetap
+ * memakai token di atas. Nilainya menimpa token yang sama, jadi semua kelas
+ * token (bg-surface, text-muted-foreground, bg-primary, ...) ikut berubah di dalamnya.
+ */
+.theme-garuda {
+  --background: #08090b;
+  --foreground: #eef1f5;
+  --surface: #101217;
+  --surface-foreground: #eef1f5;
+  --muted: #181b22;
+  --muted-foreground: #a3afba;
+  --border: rgba(255, 255, 255, 0.07);
+  --input: rgba(255, 255, 255, 0.16);
+  --primary: #5553ff;
+  --primary-foreground: #ffffff;
+  --ring: #5553ff;
+  --danger: #f04438;
+  --success: #7ee69a;
+  --warning: #fdb022;
+  --stage: #050607;
+  color-scheme: dark;
+  /* Inter dipakai bila terpasang di komputer ini; kalau tidak, font sistem. */
+  font-family: Inter, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+}
