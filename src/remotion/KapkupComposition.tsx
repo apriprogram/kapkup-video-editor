@@ -39,6 +39,7 @@ import {
   vignetteStyle,
   type AnimationResult,
 } from "./fx";
+import { useWebFonts } from "./web-fonts";
 
 /**
  * Komposisi tunggal yang dipakai preview di editor DAN render MP4.
@@ -474,6 +475,7 @@ function buildLayers(project: Project, fps: number, mediaBase: string, preview: 
 
 export const KapkupComposition: React.FC<KapkupProps> = ({ project, mediaBase, preview }) => {
   const { fps } = useVideoConfig();
+  useWebFonts(project);
   return (
     <AbsoluteFill data-kapkup-root style={{ backgroundColor: project.settings.background, overflow: "hidden" }}>
       {buildLayers(project, fps, mediaBase, preview)}

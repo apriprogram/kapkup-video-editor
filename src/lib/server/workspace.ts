@@ -159,6 +159,14 @@ export async function writeProject(id: string, project: Project): Promise<number
   return (await fsp.stat(file)).mtimeMs;
 }
 
+/** Menghapus folder project beserta media, cache, dan hasil export. Tidak bisa dibatalkan. */
+export async function deleteProject(id: string): Promise<void> {
+  // Hanya folder yang benar-benar berisi project.json yang boleh dihapus.
+  await statProject(id);
+  // Di Windows file yang sedang dibaca (mis. video di preview) terkunci sesaat; dicoba ulang.
+  await fsp.rm(projectDir(id), { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+}
+
 export async function createProject(name: string, settings?: Partial<Settings>): Promise<string> {
   await fsp.mkdir(WORKSPACE, { recursive: true });
   const base = slugify(name);

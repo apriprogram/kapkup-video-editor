@@ -242,6 +242,11 @@ const GRAIN = `url("data:image/svg+xml;utf8,${encodeURIComponent(
   `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512"><filter id="n"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter><rect width="100%" height="100%" filter="url(#n)"/></svg>`,
 )}")`;
 
+/** Titik-titik bintang lima sudut dalam persen kanvas (sama dengan STAR untuk mask). */
+const STAR_POINTS: [number, number][] = [
+  [50, 2], [61, 38], [98, 38], [68, 60], [79, 96], [50, 74], [21, 96], [32, 60], [2, 38], [39, 38],
+];
+
 /** `p` = kemajuan transisi 0–1 (sudah dilengkungkan). */
 export const TRANSITION_RENDERERS: Record<TransitionId, (p: number) => TransitionResult> = {
   fade: (p) => ({ incoming: { opacity: p } }),
@@ -380,6 +385,89 @@ export const TRANSITION_RENDERERS: Record<TransitionId, (p: number) => Transitio
       opacity: Math.min(1, p * 3),
       transform: `scale(${(0.6 + 0.4 * (1 + 2.70158 * Math.pow(p - 1, 3) + 1.70158 * Math.pow(p - 1, 2))).toFixed(4)})`,
     },
+  }),
+  "wipe-right": (p) => ({ incoming: { clipPath: `inset(0 ${pct(1 - p)} 0 0)` } }),
+  "wipe-up": (p) => ({ incoming: { clipPath: `inset(${pct(1 - p)} 0 0 0)` } }),
+  diagonal: (p) => {
+    // Garis miring 45° yang menyapu dari sudut kiri atas sampai kanan bawah.
+    const edge = n(p * 200);
+    return { incoming: { clipPath: `polygon(0% 0%, ${edge}% 0%, 0% ${edge}%)` } };
+  },
+  clock: (p) => {
+    const image = `conic-gradient(from 0deg at 50% 50%, #000 ${n(p * 360)}deg, rgba(0,0,0,0) ${n(p * 360)}deg)`;
+    return { incoming: p >= 1 ? {} : { maskImage: image, WebkitMaskImage: image } };
+  },
+  corner: (p) => ({ incoming: { clipPath: `circle(${pct(p * 1.5)} at 0% 0%)` } }),
+  diamond: (p) => {
+    // Belah ketupat dari tengah; pada jarak 100% keempat sudut kanvas ikut tertutup.
+    const near = n(50 - p * 100);
+    const far = n(50 + p * 100);
+    return { incoming: { clipPath: `polygon(50% ${near}%, ${far}% 50%, 50% ${far}%, ${near}% 50%)` } };
+  },
+  star: (p) => {
+    // Titik bintang diperbesar dari tengah; pada 4,5x lekukan dalamnya sudah melewati sudut kanvas.
+    const size = p * 4.5;
+    const points = STAR_POINTS.map(([x, y]) => `${n(50 + (x - 50) * size)}% ${n(50 + (y - 50) * size)}%`).join(", ");
+    return { incoming: p >= 1 ? {} : { clipPath: `polygon(${points})` } };
+  },
+  blinds: (p) => {
+    // Sepuluh bilah tegak yang melebar sampai menutup penuh.
+    const image = `repeating-linear-gradient(to right, #000 0%, #000 ${n(p * 10)}%, rgba(0,0,0,0) ${n(p * 10)}%, rgba(0,0,0,0) 10%)`;
+    return { incoming: p >= 1 ? {} : { maskImage: image, WebkitMaskImage: image } };
+  },
+  "cube-left": (p) => ({
+    incoming: { transformOrigin: "0% 50%", transform: `perspective(1800px) translateX(${pct(1 - p)}) rotateY(${n((1 - p) * 90)}deg)` },
+    outgoing: { transformOrigin: "100% 50%", transform: `perspective(1800px) translateX(${pct(-p)}) rotateY(${n(p * -90)}deg)` },
+  }),
+  "cube-up": (p) => ({
+    incoming: { transformOrigin: "50% 0%", transform: `perspective(1800px) translateY(${pct(1 - p)}) rotateX(${n((1 - p) * -90)}deg)` },
+    outgoing: { transformOrigin: "50% 100%", transform: `perspective(1800px) translateY(${pct(-p)}) rotateX(${n(p * 90)}deg)` },
+  }),
+  door: (p) => ({
+    incoming: {
+      transformOrigin: "0% 50%",
+      opacity: Math.min(1, p * 4),
+      transform: `perspective(1800px) rotateY(${n((1 - p) * 90)}deg)`,
+    },
+    outgoing: { filter: `brightness(${n(1 - 0.6 * p)})`, transform: `scale(${n(1 - 0.08 * p)})` },
+  }),
+  squeeze: (p) => ({
+    incoming: { transformOrigin: "100% 50%", transform: `scaleX(${n(p)})` },
+    outgoing: { transformOrigin: "0% 50%", transform: `scaleX(${n(1 - p)})` },
+  }),
+  bounce: (p) => ({
+    incoming: { transform: `translateY(${pct(bounceOut(p) - 1)})` },
+    outgoing: { filter: `brightness(${n(1 - 0.5 * p)})` },
+  }),
+  elastic: (p) => ({
+    incoming: { transform: `translateX(${pct(1 - backOut(p))})` },
+    outgoing: { transform: `translateX(${pct(-backOut(p))})` },
+  }),
+  "zoom-rotate": (p) => ({
+    incoming: {
+      opacity: clamp01(p * 1.5),
+      transform: `scale(${n(1.9 - 0.9 * p)}) rotate(${n((1 - p) * 14)}deg)`,
+      filter: `blur(${n((1 - p) * 10)}px)`,
+    },
+    outgoing: { opacity: 1 - p, transform: `scale(${n(1 - 0.35 * p)}) rotate(${n(p * -14)}deg)` },
+  }),
+  tv: (p) => {
+    // Paruh pertama: klip lama menyempit jadi garis. Paruh kedua: klip baru membuka dari garis.
+    const closing = clamp01(p * 2);
+    const opening = clamp01(p * 2 - 1);
+    return {
+      incoming: { opacity: p < 0.5 ? 0 : 1, transform: `scaleY(${n(Math.max(0.006, opening))})`, filter: `brightness(${n(1 + (1 - opening) * 1.5)})` },
+      outgoing: {
+        opacity: p < 0.5 ? 1 : 0,
+        transform: `scale(${n(1 - 0.15 * closing)}, ${n(Math.max(0.006, 1 - closing))})`,
+        filter: `brightness(${n(1 + closing * 2)})`,
+      },
+      overlay: { backgroundColor: "#fff", opacity: Math.pow(peak(p), 6) * 0.5 },
+    };
+  },
+  "hue-spin": (p) => ({
+    incoming: { opacity: p, filter: `hue-rotate(${n((1 - p) * -180)}deg) saturate(${n(1 + peak(p))})` },
+    outgoing: { filter: `hue-rotate(${n(p * 180)}deg) saturate(${n(1 + peak(p))})` },
   }),
 };
 

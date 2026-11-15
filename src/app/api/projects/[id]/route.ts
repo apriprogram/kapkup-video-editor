@@ -1,6 +1,6 @@
 import { checkProject, projectSchema } from "@/lib/project/schema";
 import { fail, type IdContext } from "@/lib/server/http";
-import { readProject, statProject, writeProject } from "@/lib/server/workspace";
+import { deleteProject, readProject, statProject, writeProject } from "@/lib/server/workspace";
 
 /** `?stat=1` hanya mengembalikan waktu ubah file, untuk mendeteksi perubahan dari luar. */
 export async function GET(request: Request, { params }: IdContext) {
@@ -24,6 +24,17 @@ export async function PUT(request: Request, { params }: IdContext) {
     const parsed = projectSchema.safeParse(body.project);
     if (!parsed.success) return Response.json({ error: "Isi project tidak valid" }, { status: 400 });
     return Response.json({ mtimeMs: await writeProject(id, parsed.data) });
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+/** Menghapus project beserta seluruh isi foldernya. */
+export async function DELETE(_request: Request, { params }: IdContext) {
+  try {
+    const { id } = await params;
+    await deleteProject(id);
+    return Response.json({ ok: true });
   } catch (error) {
     return fail(error);
   }

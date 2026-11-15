@@ -30,13 +30,48 @@ async function fetchProject(id: string): Promise<LoadResponse> {
 function isTyping(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   if (target.isContentEditable || target.tagName === "TEXTAREA" || target.tagName === "SELECT") return true;
+  // Dropdown buatan sendiri (components/ui/select.tsx) memakai tombol ber-role combobox.
+  if (target.closest('[role="combobox"], [role="listbox"]')) return true;
   return target instanceof HTMLInputElement && target.type !== "range";
+}
+
+/**
+ * Lembar kerja: "vertical" menaruh player setinggi layar di kanan (cocok untuk video
+ * tegak seperti Story/Reels); "horizontal" menaruh player di tengah atas dengan
+ * timeline selebar layar (cocok untuk video mendatar).
+ */
+export type WorkspaceLayout = "vertical" | "horizontal";
+
+const LAYOUT_KEY = "kapkup.layout";
+
+function readLayout(projectId: string): WorkspaceLayout | null {
+  try {
+    const saved = window.localStorage.getItem(`${LAYOUT_KEY}:${projectId}`);
+    return saved === "vertical" || saved === "horizontal" ? saved : null;
+  } catch {
+    return null;
+  }
 }
 
 export function Editor({ projectId }: { projectId: string }) {
   const loaded = useEditor((state) => state.projectId === projectId && state.project !== null);
   const [error, setError] = React.useState<string | null>(null);
   const [exportOpen, setExportOpen] = React.useState(false);
+
+  // Lembar kerja: pilihan pengguna diingat per project; kalau belum memilih, ikut bentuk kanvas.
+  const [layoutChoice, setLayoutChoice] = React.useState<WorkspaceLayout | null>(() =>
+    typeof window === "undefined" ? null : readLayout(projectId),
+  );
+  const landscape = useEditor((state) => (state.project ? state.project.settings.width > state.project.settings.height : false));
+  const layout: WorkspaceLayout = layoutChoice ?? (landscape ? "horizontal" : "vertical");
+  const chooseLayout = (next: WorkspaceLayout) => {
+    setLayoutChoice(next);
+    try {
+      window.localStorage.setItem(`${LAYOUT_KEY}:${projectId}`, next);
+    } catch {
+      // Tanpa penyimpanan, pilihan hanya berlaku selama tab terbuka.
+    }
+  };
 
   // Muat project saat halaman dibuka.
   React.useEffect(() => {
@@ -203,8 +238,8 @@ export function Editor({ projectId }: { projectId: string }) {
 
   return (
     <div className="flex h-full min-w-[1100px] flex-col bg-background">
-      <TopBar onExport={() => setExportOpen(true)} />
-      <Workspace projectId={projectId} />
+      <TopBar onExport={() => setExportOpen(true)} layout={layout} onLayoutChange={chooseLayout} />
+      <Workspace projectId={projectId} layout={layout} />
       {exportOpen && <ExportDialog projectId={projectId} onClose={() => setExportOpen(false)} />}
     </div>
   );
@@ -212,19 +247,26 @@ export function Editor({ projectId }: { projectId: string }) {
 
 // --- Susunan panel ---
 
-type PanelSizes = { player: number; inspector: number; timeline: number };
+type PanelSizes = { player: number; inspector: number; timeline: number; library: number };
 
-const DEFAULT_SIZES: PanelSizes = { player: 440, inspector: 320, timeline: 330 };
+const DEFAULT_SIZES: PanelSizes = { player: 440, inspector: 320, timeline: 330, library: 400 };
 const SIZES_KEY = "kapkup.panel-sizes";
+/** Lebar pembatas antarpanel (kelas w-1.5 / h-1.5 pada Splitter). */
+const GAP = 6;
+
+const between = (value: number, min: number, max: number) => Math.round(Math.min(Math.max(value, min), Math.max(min, max)));
 
 function clampSizes(sizes: PanelSizes): PanelSizes {
   const width = typeof window === "undefined" ? 1440 : window.innerWidth;
   const height = typeof window === "undefined" ? 900 : window.innerHeight;
-  const player = Math.round(Math.min(Math.max(sizes.player, 260), Math.max(260, width - 700)));
+  const player = between(sizes.player, 260, width - 700);
+  const inspector = between(sizes.inspector, 240, width - player - 380);
   return {
     player,
-    inspector: Math.round(Math.min(Math.max(sizes.inspector, 240), Math.max(240, width - player - 380))),
-    timeline: Math.round(Math.min(Math.max(sizes.timeline, 150), Math.max(150, height - 280))),
+    inspector,
+    timeline: between(sizes.timeline, 150, height - 280),
+    // Hanya dipakai lembar kerja horizontal: pustaka | player | properti.
+    library: between(sizes.library, 280, width - inspector - 380),
   };
 }
 
@@ -238,15 +280,18 @@ function loadSizes(): PanelSizes {
 }
 
 /**
- * Kiri atas: pustaka + properti. Kiri bawah: timeline. Kanan: player setinggi layar.
+ * Susunan panel memakai grid bernama. Urutan elemen di DOM sama untuk kedua lembar
+ * kerja; hanya petak grid-nya yang berpindah, supaya player tidak dibuat ulang
+ * (posisi putar dan video yang sudah dimuat tetap) saat lembar kerja diganti.
  * Semua pembatas bisa diseret; ukurannya diingat di browser ini.
  */
-function Workspace({ projectId }: { projectId: string }) {
+function Workspace({ projectId, layout }: { projectId: string; layout: WorkspaceLayout }) {
   const [sizes, setSizes] = React.useState<PanelSizes>(loadSizes);
 
-  const resize = React.useCallback((key: keyof PanelSizes, delta: number) => {
+  /** `direction` 1 = menyeret ke kanan/bawah memperbesar panel, -1 = memperkecil. */
+  const resize = React.useCallback((key: keyof PanelSizes, delta: number, direction: 1 | -1 = -1) => {
     setSizes((current) => {
-      const next = clampSizes({ ...current, [key]: current[key] - delta });
+      const next = clampSizes({ ...current, [key]: current[key] + delta * direction });
       try {
         window.localStorage.setItem(SIZES_KEY, JSON.stringify(next));
       } catch {
@@ -262,22 +307,48 @@ function Workspace({ projectId }: { projectId: string }) {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
+  const horizontal = layout === "horizontal";
+  const grid: React.CSSProperties = horizontal
+    ? {
+        gridTemplateColumns: `${sizes.library}px ${GAP}px minmax(0, 1fr) ${GAP}px ${sizes.inspector}px`,
+        gridTemplateRows: `minmax(0, 1fr) ${GAP}px ${sizes.timeline}px`,
+        gridTemplateAreas: '"library s1 player s3 inspector" "s2 s2 s2 s2 s2" "timeline timeline timeline timeline timeline"',
+      }
+    : {
+        gridTemplateColumns: `minmax(0, 1fr) ${GAP}px ${sizes.inspector}px ${GAP}px ${sizes.player}px`,
+        gridTemplateRows: `minmax(0, 1fr) ${GAP}px ${sizes.timeline}px`,
+        gridTemplateAreas: '"library s1 inspector s3 player" "s2 s2 s2 s3 player" "timeline timeline timeline s3 player"',
+      };
+  const cell = "flex min-h-0 min-w-0";
+
   return (
-    <div className="flex min-h-0 flex-1 px-1 pb-1">
-      <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex min-h-0 flex-1">
-          <LibraryPanel projectId={projectId} />
-          <Splitter orientation="vertical" label="Ubah lebar panel properti" onDrag={(delta) => resize("inspector", delta)} />
-          <Inspector style={{ width: sizes.inspector }} />
-        </div>
-        <Splitter orientation="horizontal" label="Ubah tinggi timeline" onDrag={(delta) => resize("timeline", delta)} />
-        <div className="flex shrink-0 flex-col overflow-hidden rounded-md bg-surface" style={{ height: sizes.timeline }}>
-          <Toolbar />
-          <Timeline projectId={projectId} />
-        </div>
+    <div className="grid min-h-0 flex-1 px-1.5 pb-1.5" style={grid} data-layout={layout}>
+      <div className={cell} style={{ gridArea: "library" }}>
+        <LibraryPanel projectId={projectId} />
       </div>
-      <Splitter orientation="vertical" label="Ubah lebar player" onDrag={(delta) => resize("player", delta)} />
-      <Preview projectId={projectId} style={{ width: sizes.player }} />
+      <Splitter
+        orientation="vertical"
+        style={{ gridArea: "s1" }}
+        label={horizontal ? "Ubah lebar panel pustaka" : "Ubah lebar panel properti"}
+        onDrag={(delta) => (horizontal ? resize("library", delta, 1) : resize("inspector", delta))}
+      />
+      <div className={cell} style={{ gridArea: "inspector" }}>
+        <Inspector />
+      </div>
+      <Splitter orientation="horizontal" style={{ gridArea: "s2" }} label="Ubah tinggi timeline" onDrag={(delta) => resize("timeline", delta)} />
+      <div className={`${cell} flex-col overflow-hidden rounded-xl bg-surface`} style={{ gridArea: "timeline" }}>
+        <Toolbar />
+        <Timeline projectId={projectId} />
+      </div>
+      <Splitter
+        orientation="vertical"
+        style={{ gridArea: "s3" }}
+        label={horizontal ? "Ubah lebar panel properti" : "Ubah lebar player"}
+        onDrag={(delta) => resize(horizontal ? "inspector" : "player", delta)}
+      />
+      <div className={cell} style={{ gridArea: "player" }}>
+        <Preview projectId={projectId} />
+      </div>
     </div>
   );
 }

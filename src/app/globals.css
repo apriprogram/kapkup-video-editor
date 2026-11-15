@@ -3,6 +3,76 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /*
+ * Font tampilan website: Poppins (dipilih pengguna pada 13 November 2026). Filenya ada di
+ * public/fonts/poppins, sama dengan yang dipakai untuk teks video, jadi tidak perlu internet.
+ * Hanya ketebalan yang dipakai antarmuka: 400, 500, 600, 700.
+ */
+@font-face {
+  font-family: "Poppins";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/poppins/poppins-normal-400-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Poppins";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/poppins/poppins-normal-400-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Poppins";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/poppins/poppins-normal-500-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Poppins";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/poppins/poppins-normal-500-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Poppins";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/poppins/poppins-normal-600-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Poppins";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/poppins/poppins-normal-600-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Poppins";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/poppins/poppins-normal-700-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Poppins";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/poppins/poppins-normal-700-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/*
  * Token warna Kapkup. Satu-satunya tempat nilai warna ditulis.
  * Warna brand (primary) masih SEMENTARA: aksen cyan untuk gaya editor video gelap.
  * Ganti di sini kalau warna brand Kapkup sudah ditentukan.
@@ -31,28 +101,32 @@
   --playhead: #09090b;
 }
 
+/*
+ * Editor (tema gelap). Klip video ungu, audio biru, dan garis waktu kuning
+ * mengikuti gambar acuan timeline dari pengguna (13 November 2026).
+ */
 .dark {
-  --background: #0e0e10;
-  --foreground: #ececef;
-  --surface: #1a1a1e;
-  --surface-foreground: #ececef;
-  --muted: #26262b;
-  --muted-foreground: #9c9ca6;
-  --border: #2f2f36;
-  --input: #3a3a42;
+  --background: #0b0b0d;
+  --foreground: #ededf0;
+  --surface: #151518;
+  --surface-foreground: #ededf0;
+  --muted: #212126;
+  --muted-foreground: #9a9aa5;
+  --border: #27272d;
+  --input: #3a3a43;
   --primary: #22cfe0;
   --primary-foreground: #04191c;
   --ring: #22cfe0;
   --danger: #f05252;
   --success: #22c55e;
   --warning: #f59e0b;
-  --stage: #070708;
-  --item-video: #136a73;
-  --item-audio: #24509c;
-  --item-text: #a4521f;
-  --item-fx: #5b3fa6;
-  --item-foreground: #f4f4f5;
-  --playhead: #ffffff;
+  --stage: #060607;
+  --item-video: #7446e0;
+  --item-audio: #3d5bd9;
+  --item-text: #b5561f;
+  --item-fx: #a93a7e;
+  --item-foreground: #ffffff;
+  --playhead: #f6c945;
 }
 
 @theme inline {
@@ -77,7 +151,7 @@
   --color-item-fx: var(--item-fx);
   --color-item-foreground: var(--item-foreground);
   --color-playhead: var(--playhead);
-  --font-sans: system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-sans: "Poppins", system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
 html,
@@ -102,8 +176,72 @@ body {
   outline-offset: 1px;
 }
 
+/* Kolom isian: saat fokus cukup garis tepinya (1px) yang berubah warna, tanpa outline tebal. */
+:where(input:not([type="range"], [type="checkbox"], [type="radio"], [type="color"], [type="file"]), textarea, select):focus-visible {
+  outline: none;
+  border-color: var(--ring);
+}
+
+/*
+ * Slider ramping: jalur 3px dan bulatan 12px. Bagian terisi memakai variabel
+ * --fill (persen) yang diisi komponen Slider; Firefox punya ::-moz-range-progress.
+ */
 input[type="range"] {
-  accent-color: var(--primary);
+  appearance: none;
+  height: 16px;
+  background: transparent;
+  cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--primary) var(--fill, 0%), var(--input) var(--fill, 0%));
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -4.5px;
+  border-radius: 50%;
+  border: 2px solid var(--primary);
+  background: var(--foreground);
+  transition: transform 0.12s;
+}
+
+input[type="range"]:hover::-webkit-slider-thumb,
+input[type="range"]:focus-visible::-webkit-slider-thumb {
+  transform: scale(1.2);
+}
+
+input[type="range"]::-moz-range-track {
+  height: 3px;
+  border-radius: 999px;
+  background: var(--input);
+}
+
+input[type="range"]::-moz-range-progress {
+  height: 3px;
+  border-radius: 999px;
+  background: var(--primary);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 2px solid var(--primary);
+  background: var(--foreground);
+}
+
+input[type="range"]:focus-visible {
+  outline: none;
+}
+
+input[type="range"]:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 /*
@@ -129,6 +267,6 @@ input[type="range"] {
   --warning: #fdb022;
   --stage: #050607;
   color-scheme: dark;
-  /* Inter dipakai bila terpasang di komputer ini; kalau tidak, font sistem. */
-  font-family: Inter, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  /* Sama dengan editor: Poppins (lihat @font-face di atas). */
+  font-family: var(--font-sans);
 }

@@ -29,14 +29,14 @@ import {
 import { clamp, cn, formatTime } from "@/lib/utils";
 import { pausePlayer, seekToMs, useEditor } from "@/store/editor";
 import { ASSET_DRAG_TYPE, FX_DRAG_TYPE, TRANSITION_DRAG_TYPE, type FxDragPayload } from "./drag";
+import { TransitionPopover } from "./TransitionPopover";
 
 export const TIMELINE_HEADER_WIDTH = 152;
-const RULER_HEIGHT = 26;
-const TRACK_HEIGHT: Record<TrackKind, number> = { text: 34, fx: 30, video: 62, audio: 46 };
-
-
-
-
+const RULER_HEIGHT = 30;
+// Track teks, caption, dan efek dibuat ramping; video dan audio lebih tinggi karena berisi gambar/gelombang.
+const TRACK_HEIGHT: Record<TrackKind, number> = { text: 28, fx: 28, video: 64, audio: 52 };
+/** Jarak klip dari tepi atas dan bawah track. */
+const CLIP_INSET: Record<TrackKind, number> = { text: 4, fx: 4, video: 5, audio: 5 };
 
 /** Klip yang punya titik mulai di dalam sumbernya (`inMs`). */
 function hasSourceOffset(item: Item): item is Extract<Item, { inMs: number }> {
@@ -84,24 +84,34 @@ function Waveform({ url, inMs, sourceMs }: { url: string; inMs: number; sourceMs
   React.useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !data) return;
+    // Suara pelan tetap terlihat: tinggi batang dihitung terhadap bagian paling keras di file.
+    let loudest = 0.05;
+    for (const peak of data.peaks) if (peak > loudest) loudest = peak;
     const draw = () => {
-      const width = Math.min(4096, Math.max(1, Math.round(canvas.clientWidth)));
-      const height = Math.max(1, Math.round(canvas.clientHeight));
+      const cssWidth = Math.max(1, Math.round(canvas.clientWidth));
+      const cssHeight = Math.max(1, Math.round(canvas.clientHeight));
+      const ratio = Math.min(2, window.devicePixelRatio || 1, 8192 / cssWidth);
+      const width = Math.max(1, Math.round(cssWidth * ratio));
+      const height = Math.max(1, Math.round(cssHeight * ratio));
       canvas.width = width;
       canvas.height = height;
       const context = canvas.getContext("2d");
       if (!context) return;
       context.clearRect(0, 0, width, height);
       context.fillStyle = getComputedStyle(canvas).color;
+      // Batang 2px berjarak 1px, simetris terhadap garis tengah.
+      const pitch = 3 * ratio;
+      const barWidth = 2 * ratio;
+      const bars = Math.max(1, Math.floor(width / pitch));
       const first = (inMs / 1000) * data.perSecond;
       const span = (sourceMs / 1000) * data.perSecond;
-      for (let x = 0; x < width; x++) {
-        const from = Math.floor(first + (x / width) * span);
-        const to = Math.max(from + 1, Math.floor(first + ((x + 1) / width) * span));
+      for (let bar = 0; bar < bars; bar++) {
+        const from = Math.floor(first + (bar / bars) * span);
+        const to = Math.max(from + 1, Math.floor(first + ((bar + 1) / bars) * span));
         let peak = 0;
         for (let i = from; i < to && i < data.peaks.length; i++) peak = Math.max(peak, data.peaks[i] ?? 0);
-        const bar = Math.max(1, peak * height);
-        context.fillRect(x, (height - bar) / 2, 1, bar);
+        const size = Math.max(1.5 * ratio, Math.min(1, peak / loudest) * height);
+        context.fillRect(bar * pitch, (height - size) / 2, barWidth, size);
       }
     };
     draw();
@@ -110,7 +120,12 @@ function Waveform({ url, inMs, sourceMs }: { url: string; inMs: number; sourceMs
     return () => observer.disconnect();
   }, [data, inMs, sourceMs]);
 
-  return <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 size-full text-item-foreground/60" aria-hidden />;
+  // Gelombang menempati bagian bawah klip; baris atas dibiarkan kosong untuk nama klip.
+  return (
+    <div className="pointer-events-none absolute inset-x-2.5 top-5 bottom-1" aria-hidden>
+      <canvas ref={canvasRef} className="size-full text-item-foreground/85" />
+    </div>
+  );
 }
 
 // --- Klip ---
@@ -257,12 +272,159 @@ function startItemDrag(event: React.PointerEvent, itemId: string, mode: DragMode
   window.addEventListener("pointercancel", onUp);
 }
 
+/** Bagian klip yang lamanya bisa diseret di timeline. */
+type DurationTarget = "transition" | "animationIn" | "animationOut";
+
+function durationHolder(item: Item, target: DurationTarget): { durationMs: number } | null {
+  if (target === "transition") return item.type === "video" || item.type === "image" ? item.transitionIn : null;
+  if (item.type !== "video" && item.type !== "image" && item.type !== "text") return null;
+  return target === "animationIn" ? item.animationIn : item.animationOut;
+}
+
+/**
+ * Menyeret ujung daerah transisi atau animasi = mengubah lamanya (kelipatan 0,05 detik).
+ * Animasi keluar dihitung dari akhir klip, jadi menyeret ke kiri memperpanjangnya.
+ */
+function startDurationDrag(event: React.PointerEvent, itemId: string, target: DurationTarget) {
+  if (event.button !== 0) return;
+  event.stopPropagation();
+  const store = useEditor.getState();
+  const found = store.project && findItem(store.project, itemId);
+  const holder = found && durationHolder(found.item, target);
+  if (!holder) return;
+  const origin = { x: event.clientX, durationMs: holder.durationMs };
+  const direction = target === "animationOut" ? -1 : 1;
+  const pps = store.pxPerSec;
+  let began = false;
+
+  const onMove = (move: PointerEvent) => {
+    const dx = move.clientX - origin.x;
+    if (!began) {
+      if (Math.abs(dx) < 2) return;
+      began = true;
+      useEditor.getState().beginGesture();
+    }
+    useEditor.getState().apply(
+      (draft) => {
+        const current = findItem(draft, itemId)?.item;
+        const currentHolder = current && durationHolder(current, target);
+        if (!current || !currentHolder) return;
+        const max = Math.max(100, Math.min(5000, current.durationMs));
+        const wanted = Math.round((origin.durationMs + ((dx * direction) / pps) * 1000) / 50) * 50;
+        currentHolder.durationMs = clamp(wanted, 100, max);
+      },
+      { history: false },
+    );
+  };
+  const onUp = () => {
+    window.removeEventListener("pointermove", onMove);
+    window.removeEventListener("pointerup", onUp);
+    window.removeEventListener("pointercancel", onUp);
+    if (began) useEditor.getState().endGesture();
+  };
+  window.addEventListener("pointermove", onMove);
+  window.addEventListener("pointerup", onUp);
+  window.addEventListener("pointercancel", onUp);
+}
+
+/** Klik keyframe = lompat ke waktunya; seret = menggeser waktunya di antara keyframe tetangga. */
+function startKeyframeDrag(event: React.PointerEvent, itemId: string, atMs: number) {
+  if (event.button !== 0) return;
+  event.stopPropagation();
+  const store = useEditor.getState();
+  const project = store.project;
+  const found = project && findItem(project, itemId);
+  if (!project || !found || !isVisual(found.item)) return;
+  const index = found.item.keyframes.findIndex((keyframe) => keyframe.atMs === atMs);
+  if (index < 0) return;
+  if (!store.selectedIds.includes(itemId)) store.select(itemId);
+  const startMs = found.item.startMs;
+  const origin = event.clientX;
+  const pps = store.pxPerSec;
+  const frameMs = Math.ceil(1000 / project.settings.fps);
+  let began = false;
+
+  const onMove = (move: PointerEvent) => {
+    const dx = move.clientX - origin;
+    if (!began) {
+      if (Math.abs(dx) < 3) return;
+      began = true;
+      useEditor.getState().beginGesture();
+    }
+    useEditor.getState().apply(
+      (draft) => {
+        const current = findItem(draft, itemId)?.item;
+        if (!current || !isVisual(current) || !current.keyframes[index]) return;
+        const previous = current.keyframes[index - 1];
+        const next = current.keyframes[index + 1];
+        const min = previous ? previous.atMs + frameMs : 0;
+        const max = next ? next.atMs - frameMs : current.durationMs;
+        if (max >= min) current.keyframes[index].atMs = Math.round(clamp(atMs + (dx / pps) * 1000, min, max));
+      },
+      { history: false },
+    );
+  };
+  const onUp = () => {
+    window.removeEventListener("pointermove", onMove);
+    window.removeEventListener("pointerup", onUp);
+    window.removeEventListener("pointercancel", onUp);
+    if (began) {
+      useEditor.getState().endGesture();
+    } else {
+      pausePlayer();
+      seekToMs(startMs + atMs);
+    }
+  };
+  window.addEventListener("pointermove", onMove);
+  window.addEventListener("pointerup", onUp);
+  window.addEventListener("pointercancel", onUp);
+}
+
+// Klip audio tembus pandang dengan tepi terang supaya gelombang putihnya menonjol.
 const CLIP_COLOR: Record<TrackKind, string> = {
-  video: "bg-item-video",
-  audio: "bg-item-audio",
-  text: "bg-item-text",
-  fx: "bg-item-fx",
+  video: "bg-item-video ring-1 ring-item-foreground/25",
+  audio: "bg-item-audio/45 ring-1 ring-item-audio",
+  text: "bg-item-text ring-1 ring-item-foreground/25",
+  fx: "bg-item-fx ring-1 ring-item-foreground/25",
 };
+
+/** Jalur track diberi rona tipis sewarna klipnya supaya jenis track langsung terbaca. */
+const LANE_TINT: Record<TrackKind, string> = {
+  video: "bg-item-video/8",
+  audio: "bg-item-audio/8",
+  text: "bg-item-text/8",
+  fx: "bg-item-fx/8",
+};
+
+const KIND_TEXT: Record<TrackKind, string> = {
+  video: "text-item-video",
+  audio: "text-item-audio",
+  text: "text-item-text",
+  fx: "text-item-fx",
+};
+
+/** Pegangan potong di ujung klip: batang kecil seperti pada gambar acuan. */
+function TrimHandle({ side, itemId, selected, visible }: { side: "start" | "end"; itemId: string; selected: boolean; visible: boolean }) {
+  return (
+    <span
+      className={cn(
+        "absolute inset-y-0 flex w-2.5 cursor-ew-resize items-center justify-center",
+        side === "start" ? "left-0" : "right-0",
+      )}
+      onPointerDown={(event) => startItemDrag(event, itemId, side === "start" ? "trim-start" : "trim-end")}
+      aria-hidden
+    >
+      {visible && (
+        <span
+          className={cn(
+            "h-2/5 min-h-2.5 w-[3px] rounded-full transition-colors",
+            selected ? "bg-item-foreground" : "bg-item-foreground/45",
+          )}
+        />
+      )}
+    </span>
+  );
+}
 
 /** Deretan frame kecil di sepanjang klip video, mengikuti bagian sumber yang dipakai. */
 function Filmstrip({
@@ -278,7 +440,7 @@ function Filmstrip({
   width: number;
   pps: number;
 }) {
-  const height = TRACK_HEIGHT.video - 8;
+  const height = TRACK_HEIGHT.video - CLIP_INSET.video * 2;
   const tileWidth = Math.max(24, Math.round(height * (asset.height > 0 ? asset.width / asset.height : 16 / 9)));
   const count = Math.min(120, Math.ceil(width / tileWidth));
   // Waktu dibulatkan supaya frame yang sama dipakai ulang saat zoom berubah.
@@ -348,7 +510,7 @@ function CoverButton({ projectId }: { projectId: string }) {
       disabled={busy}
       aria-label="Sampul: pakai frame di garis waktu sebagai sampul project"
       title="Sampul: pakai frame di garis waktu sebagai sampul project"
-      className="relative flex h-11 w-8 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded bg-muted text-[9px] leading-tight text-muted-foreground hover:ring-1 hover:ring-primary disabled:cursor-wait"
+      className="relative flex h-11 w-9 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded bg-muted text-[8px] leading-tight text-muted-foreground hover:ring-1 hover:ring-primary disabled:cursor-wait"
     >
       {coverMs !== null ? (
         // eslint-disable-next-line @next/next/no-img-element -- sampul lokal dari folder project
@@ -368,6 +530,8 @@ const TimelineItem = React.memo(function TimelineItem({
   pps,
   selected,
   projectId,
+  transitionOpen,
+  onEditTransition,
 }: {
   item: Item;
   kind: TrackKind;
@@ -375,6 +539,9 @@ const TimelineItem = React.memo(function TimelineItem({
   pps: number;
   selected: boolean;
   projectId: string;
+  /** Kotak pengatur transisi klip ini sedang terbuka. */
+  transitionOpen: boolean;
+  onEditTransition: (itemId: string, badge: DOMRect) => void;
 }) {
   const left = (item.startMs / 1000) * pps;
   const width = Math.max(2, (item.durationMs / 1000) * pps);
@@ -384,8 +551,18 @@ const TimelineItem = React.memo(function TimelineItem({
   const transition = item.type === "video" || item.type === "image" ? item.transitionIn : null;
   const keyframes = isVisual(item) ? item.keyframes : [];
   const acceptsTransition = item.type === "video" || item.type === "image";
+  /** Klip di track ramping (teks, caption, efek): namanya ditaruh di tengah. */
+  const compact = kind === "text" || kind === "fx";
+  const animated = item.type === "video" || item.type === "image" || item.type === "text" ? item : null;
+  const animationIn = animated?.animationIn ?? null;
+  const animationOut = animated?.animationOut ?? null;
+  const inWidth = animationIn ? Math.min(width, (animationIn.durationMs / 1000) * pps) : 0;
+  const outWidth = animationOut ? Math.min(width, (animationOut.durationMs / 1000) * pps) : 0;
+  const transitionLabel = transition ? (TRANSITIONS.find((entry) => entry.id === transition.type)?.label ?? transition.type) : "";
+  const transitionWidth = transition ? Math.min(width, Math.max(18, (transition.durationMs / 1000) * pps)) : 0;
 
   return (
+    <>
     <div
       role="button"
       tabIndex={0}
@@ -408,12 +585,13 @@ const TimelineItem = React.memo(function TimelineItem({
         useEditor.getState().select(item.id);
       }}
       className={cn(
-        "absolute top-1 bottom-1 cursor-grab touch-none overflow-hidden rounded text-item-foreground select-none active:cursor-grabbing",
+        "absolute cursor-grab touch-none overflow-hidden bg-linear-to-b from-item-foreground/15 to-item-foreground/0 text-item-foreground ring-inset select-none active:cursor-grabbing",
+        compact ? "rounded-md" : "rounded-lg",
         CLIP_COLOR[kind],
-        selected ? "z-10 ring-2 ring-foreground" : "ring-1 ring-background/40",
+        selected && "z-10 ring-2 ring-foreground",
         isMedia(item) && !asset && "bg-danger/60",
       )}
-      style={{ left, width }}
+      style={{ left, width, top: CLIP_INSET[kind], bottom: CLIP_INSET[kind] }}
     >
       {item.type === "video" && asset && <Filmstrip projectId={projectId} item={item} asset={asset} width={width} pps={pps} />}
       {thumbnail && item.type === "image" && (
@@ -428,45 +606,112 @@ const TimelineItem = React.memo(function TimelineItem({
         />
       )}
       {item.type === "audio" && asset?.peaks && (
-        <Waveform url={`${files}/${asset.peaks}`} inMs={item.inMs} sourceMs={item.durationMs} />
+        <Waveform url={`${files}/${asset.peaks}`} inMs={item.inMs} sourceMs={item.durationMs * item.speed} />
+      )}
+      {transition && (
+        // Bayangan yang memudar + garis putih di bawah = lamanya transisi dari klip sebelumnya.
+        <span
+          className="pointer-events-none absolute inset-y-0 left-0 bg-linear-to-r from-background/80 to-background/0"
+          style={{ width: transitionWidth }}
+          aria-hidden
+        >
+          <span className="absolute inset-x-0 bottom-0 h-[3px] rounded-r-full bg-foreground" />
+          {transitionWidth > 84 && (
+            <span className="absolute bottom-1.5 left-3 text-[10px] leading-3 font-medium whitespace-nowrap text-foreground">
+              {transitionLabel} · {(transition.durationMs / 1000).toFixed(1)} dtk
+            </span>
+          )}
+        </span>
       )}
       <span
         className={cn(
-          "pointer-events-none absolute top-0.5 left-1.5 max-w-[calc(100%-12px)] truncate text-[11px] leading-4",
-          thumbnail && "rounded-sm bg-background/70 px-1 text-foreground",
+          "pointer-events-none absolute left-3 max-w-[calc(100%-24px)] truncate text-[11px] leading-4 font-medium",
+          compact ? "top-1/2 -translate-y-1/2" : "top-1",
+          thumbnail && "rounded bg-background/70 px-1 text-foreground",
         )}
       >
         {label}
         {item.type === "video" && item.speed !== 1 ? ` · ${item.speed}x` : ""}
       </span>
-      {transition && (
+      {transition && width > 44 && (
         <span
-          className="pointer-events-none absolute inset-y-0 left-0 flex items-end bg-linear-to-r from-foreground/70 to-transparent pb-0.5 pl-1.5 text-[10px] leading-3 font-semibold text-background"
-          style={{ width: Math.min(width, Math.max(14, (transition.durationMs / 1000) * pps)) }}
-          title={`Transisi: ${TRANSITIONS.find((entry) => entry.id === transition.type)?.label ?? transition.type}`}
+          className="absolute inset-y-0 flex w-2.5 -translate-x-1/2 cursor-ew-resize items-center justify-center"
+          style={{ left: clamp(transitionWidth, 16, width - 16) }}
+          title="Seret untuk mengubah durasi transisi"
+          onPointerDown={(event) => startDurationDrag(event, item.id, "transition")}
+          aria-hidden
         >
-          ⧓
+          <span className="h-3/5 w-0.5 rounded-full bg-foreground" />
+        </span>
+      )}
+      {/* Animasi masuk/keluar: garis di tepi atas sepanjang durasinya; bulatannya bisa diseret saat klip dipilih. */}
+      {animationIn && (
+        <span className="pointer-events-none absolute top-0 left-0 h-[3px] rounded-br-full bg-primary" style={{ width: inWidth }} aria-hidden />
+      )}
+      {animationOut && (
+        <span className="pointer-events-none absolute top-0 right-0 h-[3px] rounded-bl-full bg-primary" style={{ width: outWidth }} aria-hidden />
+      )}
+      {selected && animationIn && width > 60 && (
+        <span
+          className="absolute top-0 flex h-3 w-3 -translate-x-1/2 cursor-ew-resize items-start justify-center"
+          style={{ left: clamp(inWidth, 14, width - 14) }}
+          title={`Animasi masuk ${(animationIn.durationMs / 1000).toFixed(2)} dtk. Seret untuk mengubah durasinya`}
+          onPointerDown={(event) => startDurationDrag(event, item.id, "animationIn")}
+          aria-hidden
+        >
+          <span className="size-2 rounded-full bg-primary ring-1 ring-background" />
+        </span>
+      )}
+      {selected && animationOut && width > 60 && (
+        <span
+          className="absolute top-0 flex h-3 w-3 -translate-x-1/2 cursor-ew-resize items-start justify-center"
+          style={{ left: clamp(width - outWidth, 14, width - 14) }}
+          title={`Animasi keluar ${(animationOut.durationMs / 1000).toFixed(2)} dtk. Seret untuk mengubah durasinya`}
+          onPointerDown={(event) => startDurationDrag(event, item.id, "animationOut")}
+          aria-hidden
+        >
+          <span className="size-2 rounded-full bg-primary ring-1 ring-background" />
         </span>
       )}
       {keyframes.map((keyframe) => (
+        // Area sentuh 12px; belah ketupatnya sendiri 8px.
         <span
           key={keyframe.atMs}
-          className="pointer-events-none absolute bottom-1 size-2 -translate-x-1/2 rotate-45 border border-background bg-foreground"
+          className="absolute bottom-0 flex h-3.5 w-3 -translate-x-1/2 cursor-ew-resize items-center justify-center"
           style={{ left: clamp((keyframe.atMs / 1000) * pps, 5, Math.max(5, width - 5)) }}
+          title={`Keyframe ${formatTime(keyframe.atMs)}. Klik untuk lompat ke sini, seret untuk menggeser waktunya`}
+          onPointerDown={(event) => startKeyframeDrag(event, item.id, keyframe.atMs)}
           aria-hidden
-        />
+        >
+          <span className="size-2 rotate-45 border border-background bg-playhead" />
+        </span>
       ))}
-      <span
-        className={cn("absolute inset-y-0 left-0 w-2 cursor-ew-resize", selected && "bg-foreground/80")}
-        onPointerDown={(event) => startItemDrag(event, item.id, "trim-start")}
-        aria-hidden
-      />
-      <span
-        className={cn("absolute inset-y-0 right-0 w-2 cursor-ew-resize", selected && "bg-foreground/80")}
-        onPointerDown={(event) => startItemDrag(event, item.id, "trim-end")}
-        aria-hidden
-      />
+      <TrimHandle side="start" itemId={item.id} selected={selected} visible={width > 34} />
+      <TrimHandle side="end" itemId={item.id} selected={selected} visible={width > 34} />
     </div>
+    {transition && (
+      // Lencana di sambungan dua klip; di luar klip supaya tidak terpotong tepinya.
+      <button
+        type="button"
+        data-transition-badge
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => onEditTransition(item.id, event.currentTarget.getBoundingClientRect())}
+        aria-expanded={transitionOpen}
+        aria-label={`Transisi ${transitionLabel}, ${(transition.durationMs / 1000).toFixed(1)} detik. Klik untuk mengatur durasi atau menghapusnya`}
+        title={`Transisi: ${transitionLabel} · ${(transition.durationMs / 1000).toFixed(1)} dtk. Klik untuk mengatur atau menghapus`}
+        className={cn(
+          "absolute top-1/2 z-10 flex size-[18px] -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center justify-center rounded-[5px] shadow-md transition-transform hover:scale-115",
+          transitionOpen ? "bg-primary text-primary-foreground ring-2 ring-foreground" : "bg-foreground text-background ring-1 ring-background/70",
+        )}
+        style={{ left: Math.max(11, left) }}
+      >
+        {/* Dua segitiga berhadapan: tanda transisi yang lazim di editor video. */}
+        <svg viewBox="0 0 12 12" className="size-3" fill="currentColor" aria-hidden>
+          <path d="M1 2.6v6.8L5.6 6zM11 2.6v6.8L6.4 6z" />
+        </svg>
+      </button>
+    )}
+    </>
   );
 });
 
@@ -494,8 +739,25 @@ function Playhead({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement | n
       className="pointer-events-none absolute top-0 bottom-0 z-10 w-px bg-playhead"
       style={{ left: TIMELINE_HEADER_WIDTH + x }}
       aria-hidden
+    />
+  );
+}
+
+/** Kepala garis waktu di penggaris: label waktu kuning dengan penunjuk ke garisnya. */
+function PlayheadLabel() {
+  const frame = useEditor((state) => state.frame);
+  const fps = useEditor((state) => state.project?.settings.fps ?? 30);
+  const pps = useEditor((state) => state.pxPerSec);
+  return (
+    <div
+      className="pointer-events-none absolute bottom-0 z-10 flex -translate-x-1/2 flex-col items-center"
+      style={{ left: (frame / fps) * pps }}
+      aria-hidden
     >
-      <div className="absolute -top-px -left-[5px] h-3 w-[11px] rounded-b-sm bg-playhead" />
+      <span className="rounded bg-playhead px-1 font-mono text-[10px] leading-4 font-semibold whitespace-nowrap text-background tabular-nums">
+        {formatTime(frameToMs(frame, fps))}
+      </span>
+      <span className="h-0 w-0 border-x-4 border-t-[5px] border-x-transparent border-t-playhead" />
     </div>
   );
 }
@@ -519,7 +781,7 @@ function TrackHeader({ track, leading }: { track: Track; leading?: React.ReactNo
       className="sticky left-0 z-20 flex shrink-0 items-center gap-1 border-r border-border bg-surface pr-1 pl-2"
       style={{ width: TIMELINE_HEADER_WIDTH }}
     >
-      {leading ?? <Icon className="size-3.5 shrink-0 text-muted-foreground" />}
+      {leading ?? <Icon className={cn("size-3.5 shrink-0", KIND_TEXT[track.kind])} />}
       <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground" title={track.name}>
         {track.name || track.kind}
       </span>
@@ -571,6 +833,20 @@ export function Timeline({ projectId }: { projectId: string }) {
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const [viewport, setViewport] = React.useState(0);
   const [marquee, setMarquee] = React.useState<{ left: number; top: number; width: number; height: number } | null>(null);
+
+  // Transisi yang sedang diatur: id-nya di store (supaya Delete menghapus transisinya,
+  // bukan klipnya), letak lencananya di sini untuk menaruh kotak pengaturnya.
+  const transitionEditId = useEditor((state) => state.transitionEditId);
+  const [transitionAnchor, setTransitionAnchor] = React.useState<{ id: string; x: number; y: number } | null>(null);
+  const editTransition = React.useCallback((itemId: string, badge: DOMRect) => {
+    const store = useEditor.getState();
+    if (store.transitionEditId === itemId) {
+      store.editTransition(null);
+      return;
+    }
+    setTransitionAnchor({ id: itemId, x: badge.left + badge.width / 2, y: badge.top });
+    store.editTransition(itemId);
+  }, []);
 
   React.useEffect(() => {
     const scroller = scrollRef.current;
@@ -697,7 +973,9 @@ export function Timeline({ projectId }: { projectId: string }) {
       ref={scrollRef}
       data-timeline-scroll
       aria-label="Timeline"
-      className="relative min-h-0 flex-1 overflow-auto"
+      className="relative min-h-0 flex-1 overflow-auto select-none"
+      // Kotak pengatur transisi menempel pada posisi layar lencananya; saat digulir, ditutup.
+      onScroll={() => useEditor.getState().transitionEditId && useEditor.getState().editTransition(null)}
       onDragOver={(event) =>
         (acceptsAsset(event) || event.dataTransfer.types.includes(TRANSITION_DRAG_TYPE)) && event.preventDefault()
       }
@@ -715,7 +993,7 @@ export function Timeline({ projectId }: { projectId: string }) {
             style={{
               width: laneWidth,
               backgroundImage: "linear-gradient(to right, var(--input) 1px, transparent 1px)",
-              backgroundSize: `${(step * pps) / 5}px 5px`,
+              backgroundSize: `${(step * pps) / 5}px 4px`,
               backgroundRepeat: "repeat-x",
               backgroundPosition: "left bottom",
             }}
@@ -724,12 +1002,14 @@ export function Timeline({ projectId }: { projectId: string }) {
             {Array.from({ length: tickCount + 1 }, (_, index) => (
               <span
                 key={index}
-                className="pointer-events-none absolute top-0 bottom-0 border-l border-input pl-1 text-[10px] leading-4 text-muted-foreground tabular-nums"
+                className="pointer-events-none absolute top-0 bottom-0 pt-1 pl-1.5 font-mono text-[10px] leading-4 text-muted-foreground tabular-nums"
                 style={{ left: index * step * pps }}
               >
+                <span className="absolute bottom-0 left-0 h-2.5 w-px bg-muted-foreground/70" />
                 {step < 1 ? formatTime(index * step * 1000) : formatTime(index * step * 1000, true)}
               </span>
             ))}
+            <PlayheadLabel />
           </div>
         </div>
 
@@ -739,7 +1019,7 @@ export function Timeline({ projectId }: { projectId: string }) {
             <TrackHeader track={track} leading={track.id === mainVideoId ? <CoverButton projectId={projectId} /> : undefined} />
             <div
               data-track-id={track.id}
-              className={cn("relative", track.hidden && track.kind !== "audio" && "opacity-40")}
+              className={cn("relative", LANE_TINT[track.kind], track.hidden && track.kind !== "audio" && "opacity-40")}
               style={{ width: laneWidth }}
               onPointerDown={startLaneDrag}
               onDragOver={(event) => acceptsAsset(event) && event.preventDefault()}
@@ -754,6 +1034,8 @@ export function Timeline({ projectId }: { projectId: string }) {
                   pps={pps}
                   selected={selectedIds.includes(item.id)}
                   projectId={projectId}
+                  transitionOpen={transitionEditId === item.id}
+                  onEditTransition={editTransition}
                 />
               ))}
             </div>
@@ -771,6 +1053,9 @@ export function Timeline({ projectId }: { projectId: string }) {
 
         <Playhead scrollRef={scrollRef} />
         {marquee && <div className="pointer-events-none fixed z-40 border border-primary bg-primary/15" style={marquee} aria-hidden />}
+        {transitionAnchor && transitionEditId === transitionAnchor.id && (
+          <TransitionPopover itemId={transitionAnchor.id} anchor={transitionAnchor} />
+        )}
       </div>
     </div>
   );

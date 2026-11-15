@@ -8,6 +8,7 @@
  *   npm run kapkup -- still <id> <ms> [skala]
  *   npm run kapkup -- export <id> [nama=nilai ...] [--format mp4|gif|mp3] [--out nama-file]
  *   npm run kapkup -- transcribe <id> <idKlip> [tiny|base|small|medium] [kode bahasa]
+ *   npm run kapkup -- tts <id> "teks" [nomor suara 0-9] [kecepatan] [id|en]
  */
 import fsp from "node:fs/promises";
 import path from "node:path";
@@ -16,6 +17,7 @@ import { nanoid } from "nanoid";
 import { ASPECT_PRESETS, captionsItemSchema, checkProject, contentDurationMs } from "../src/lib/project/schema";
 import { isSupportedMedia, registerMedia, uniqueMediaName } from "../src/lib/server/media";
 import { transcribeClip } from "../src/lib/server/transcribe";
+import type { TtsLanguage } from "../src/lib/server/tts-config";
 import { DEFAULT_WHISPER_MODEL } from "../src/lib/server/whisper-config";
 import { WORKSPACE, createProject, listProjects, projectDir, readProject, writeProject } from "../src/lib/server/workspace";
 
@@ -135,6 +137,43 @@ async function main(): Promise<number> {
       return 0;
     }
 
+    // Dipakai editor: teks dibaca dari stdin, aset baru dicetak sebagai satu baris JSON,
+    // project.json tidak disentuh.
+    case "tts-json": {
+      const [id, voice = "0", speed = "1", language = "id"] = args;
+      if (!id) return usage();
+      const chunks: Buffer[] = [];
+      for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
+      // Paket natif dimuat hanya saat dibutuhkan, supaya perintah lain tetap ringan.
+      const { speak } = await import("../src/lib/server/tts");
+      const asset = await speak(id, Buffer.concat(chunks).toString("utf8"), {
+        voice: Number(voice),
+        speed: Number(speed),
+        language: language as TtsLanguage,
+        log: (message) => console.error(message),
+      });
+      console.log(JSON.stringify({ asset }));
+      return 0;
+    }
+
+    case "tts": {
+      const [id, text, voice = "0", speed = "1", language = "id"] = args;
+      if (!id || !text) return usage();
+      const { speak } = await import("../src/lib/server/tts");
+      const asset = await speak(id, text, {
+        voice: Number(voice),
+        speed: Number(speed),
+        language: language as TtsLanguage,
+        log: (message) => console.error(message),
+      });
+      // Dibaca tepat sebelum menulis, supaya perubahan selama suara dibuat tidak tertimpa.
+      const { project } = await readProject(id);
+      project.assets.push(asset);
+      await writeProject(id, project);
+      console.log(`${asset.id}\t${asset.type}\t${asset.durationMs} ms\t${asset.path}`);
+      return 0;
+    }
+
     case "export": {
       // kapkup export <id> [nama=nilai ...] [--format mp4|gif|mp3] [--out nama-file]
       const [id, ...rest] = args;
@@ -192,6 +231,7 @@ function usage(): number {
       "  kapkup still <id> <ms> [skala]",
       "  kapkup export <id> [nama=nilai ...] [--format mp4|gif|mp3] [--out nama-file]",
       "  kapkup transcribe <id> <idKlip> [tiny|base|small|medium] [kode bahasa]",
+      '  kapkup tts <id> "teks" [nomor suara 0-9] [kecepatan] [id|en]',
     ].join("\n"),
   );
   return 2;

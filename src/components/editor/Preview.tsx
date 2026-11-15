@@ -15,8 +15,8 @@ function TimeReadout() {
   const fps = useEditor((state) => state.project?.settings.fps ?? 30);
   const total = useEditor((state) => (state.project ? contentDurationMs(state.project) : 0));
   return (
-    <span className="text-xs tabular-nums" aria-label="Posisi waktu">
-      <span className="text-primary">{formatTime(frameToMs(frame, fps))}</span>
+    <span className="font-mono text-xs tabular-nums" aria-label="Posisi waktu">
+      <span className="text-foreground">{formatTime(frameToMs(frame, fps))}</span>
       <span className="text-muted-foreground"> / {formatTime(total)}</span>
     </span>
   );
@@ -72,10 +72,10 @@ export function Preview({ projectId, style }: { projectId: string; style?: React
   const { width, height, fps } = project.settings;
 
   return (
-    <section aria-label="Player" style={style} className="flex shrink-0 flex-col overflow-hidden rounded-md bg-surface">
-      <div className="flex h-9 shrink-0 items-center justify-between gap-2 px-3 text-xs">
+    <section aria-label="Player" style={style} className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl bg-surface">
+      <div className="flex h-10 shrink-0 items-center justify-between gap-2 px-3 text-xs">
         <span className="font-semibold">Player</span>
-        <span className="truncate text-muted-foreground tabular-nums">
+        <span className="truncate rounded-md bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground tabular-nums">
           {width}×{height} · {fps} fps
         </span>
       </div>
@@ -99,18 +99,19 @@ export function Preview({ projectId, style }: { projectId: string; style?: React
         </div>
         <StageOverlay stageRef={stageRef} view={view} onViewChange={setView} panMode={panMode} />
       </div>
-      <div className="grid h-10 shrink-0 grid-cols-3 items-center px-3">
+      <div className="grid h-12 shrink-0 grid-cols-3 items-center px-3">
         <TimeReadout />
-        <div className="flex items-center justify-center gap-1">
+        <div className="flex items-center justify-center gap-1.5">
           <IconButton label="Ke awal (Home)" onClick={() => seekToFrame(0)}>
             <SkipBack />
           </IconButton>
           <IconButton
             label={playing ? "Jeda (Spasi)" : "Putar (Spasi)"}
             onClick={togglePlay}
-            className="size-8 text-foreground"
+            variant="primary"
+            className="size-8 rounded-full [&_svg]:fill-current"
           >
-            {playing ? <Pause /> : <Play />}
+            {playing ? <Pause /> : <Play className="translate-x-px" />}
           </IconButton>
         </div>
         <div className="flex items-center justify-end gap-0.5">

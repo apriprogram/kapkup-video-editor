@@ -4,6 +4,21 @@ import type { Easing, Keyframe, Transform } from "./schema";
 
 const PROPS = ["x", "y", "scale", "rotation", "opacity"] as const;
 
+const BACK = 1.70158;
+
+function bounceOut(t: number): number {
+  const n1 = 7.5625;
+  const d1 = 2.75;
+  if (t < 1 / d1) return n1 * t * t;
+  if (t < 2 / d1) return n1 * (t - 1.5 / d1) * (t - 1.5 / d1) + 0.75;
+  if (t < 2.5 / d1) return n1 * (t - 2.25 / d1) * (t - 2.25 / d1) + 0.9375;
+  return n1 * (t - 2.625 / d1) * (t - 2.625 / d1) + 0.984375;
+}
+
+/**
+ * Melengkungkan kemajuan 0–1. Hasil `back-*` dan `elastic-out` sengaja bisa keluar
+ * dari rentang 0–1 (gerak melewati tujuan), tetapi selalu 0 di awal dan 1 di akhir.
+ */
 export function ease(kind: Easing, p: number): number {
   const t = Math.min(1, Math.max(0, p));
   switch (kind) {
@@ -13,6 +28,28 @@ export function ease(kind: Easing, p: number): number {
       return 1 - (1 - t) * (1 - t);
     case "ease-in-out":
       return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    case "cubic-in":
+      return t * t * t;
+    case "cubic-out":
+      return 1 - Math.pow(1 - t, 3);
+    case "cubic-in-out":
+      return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    case "back-in":
+      return (BACK + 1) * t * t * t - BACK * t * t;
+    case "back-out":
+      return 1 + (BACK + 1) * Math.pow(t - 1, 3) + BACK * Math.pow(t - 1, 2);
+    case "back-in-out": {
+      const k = BACK * 1.525;
+      return t < 0.5
+        ? (Math.pow(2 * t, 2) * ((k + 1) * 2 * t - k)) / 2
+        : (Math.pow(2 * t - 2, 2) * ((k + 1) * (2 * t - 2) + k) + 2) / 2;
+    }
+    case "elastic-out":
+      return t === 0 || t === 1 ? t : Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * ((2 * Math.PI) / 3)) + 1;
+    case "bounce-out":
+      return bounceOut(t);
+    case "hold":
+      return t >= 1 ? 1 : 0;
     default:
       return t;
   }

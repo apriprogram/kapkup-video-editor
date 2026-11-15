@@ -47,6 +47,11 @@ async function readJob(id: string): Promise<ExportJob> {
     if (isRunning(job) && !alive(job.pid) && Date.now() - job.startedAt > 5000) {
       return { ...job, status: "error", error: "Proses export berhenti sebelum selesai" };
     }
+    if (job.status === "done" && job.output) {
+      // File hasil bisa saja sudah dipindah atau dihapus pengguna; saat itu tidak ada lagi yang bisa diunduh.
+      const stat = await fsp.stat(resolveInProject(id, job.output)).catch(() => null);
+      return stat ? { ...job, sizeBytes: stat.size } : IDLE_JOB;
+    }
     return job;
   } catch {
     return IDLE_JOB;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { keyframeIndexNear, rebaseKeyframes, scaleKeyframes, transformAt } from "./animate";
-import { NEUTRAL_TRANSFORM, type Keyframe } from "./schema";
+import { ease, keyframeIndexNear, rebaseKeyframes, scaleKeyframes, transformAt } from "./animate";
+import { EASINGS, NEUTRAL_TRANSFORM, type Keyframe } from "./schema";
 
 const kf = (atMs: number, scale: number, easing: Keyframe["easing"] = "linear"): Keyframe => ({
   ...NEUTRAL_TRANSFORM,
@@ -25,6 +25,24 @@ describe("transformAt", () => {
   it("melengkungkan gerak sesuai easing keyframe awal segmen", () => {
     const item = { transform: NEUTRAL_TRANSFORM, keyframes: [kf(0, 1, "ease-in"), kf(1000, 2)] };
     expect(transformAt(item, 500).scale).toBeCloseTo(1.25);
+  });
+});
+
+describe("ease", () => {
+  it("selalu mulai di 0 dan berakhir di 1 untuk semua lengkung", () => {
+    for (const kind of EASINGS) {
+      expect(ease(kind, 0), kind).toBeCloseTo(0);
+      expect(ease(kind, 1), kind).toBeCloseTo(1);
+    }
+  });
+
+  it("back-out melewati tujuan, hold menahan sampai akhir", () => {
+    expect(Math.max(...[0.5, 0.6, 0.7, 0.8].map((t) => ease("back-out", t)))).toBeGreaterThan(1);
+    expect(ease("back-in", 0.2)).toBeLessThan(0);
+    expect(ease("hold", 0.99)).toBe(0);
+    const item = { transform: NEUTRAL_TRANSFORM, keyframes: [kf(0, 1, "hold"), kf(1000, 2)] };
+    expect(transformAt(item, 900).scale).toBe(1);
+    expect(transformAt(item, 1000).scale).toBe(2);
   });
 });
 

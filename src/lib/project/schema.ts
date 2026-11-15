@@ -19,7 +19,27 @@ export const transformSchema = z.object({
   opacity: z.number().min(0).max(1).default(1),
 });
 
-export const EASINGS = ["linear", "ease-in", "ease-out", "ease-in-out"] as const;
+/**
+ * Lengkung gerak antar-keyframe (rumusnya di animate.ts). Empat yang pertama lembut;
+ * `cubic-*` lebih tegas (seperti Easy Ease di After Effects); `back-*` melewati
+ * tujuan lalu kembali; `elastic-out` dan `bounce-out` bergetar/memantul di akhir;
+ * `hold` menahan nilai sampai keyframe berikutnya lalu melompat.
+ */
+export const EASINGS = [
+  "linear",
+  "ease-in",
+  "ease-out",
+  "ease-in-out",
+  "cubic-in",
+  "cubic-out",
+  "cubic-in-out",
+  "back-in",
+  "back-out",
+  "back-in-out",
+  "elastic-out",
+  "bounce-out",
+  "hold",
+] as const;
 
 /**
  * Keyframe = posisi/ukuran pada satu titik waktu. Bila sebuah klip punya

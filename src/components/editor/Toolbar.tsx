@@ -3,9 +3,11 @@
 import {
   ArrowLeftToLine,
   ArrowRightToLine,
+  Captions,
   Copy,
   Film,
   FlipHorizontal2,
+  LoaderCircle,
   Magnet,
   Maximize2,
   MousePointer2,
@@ -19,14 +21,48 @@ import {
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
+import * as React from "react";
+import { toast } from "sonner";
 import { contentDurationMs, isVisual } from "@/lib/project/schema";
 import { findItem } from "@/lib/timeline/ops";
 import { MAX_PX_PER_SEC, MIN_PX_PER_SEC, useEditor } from "@/store/editor";
-import { IconButton } from "@/components/ui/button";
+import { Button, IconButton } from "@/components/ui/button";
+import { Slider } from "@/components/ui/field";
+import { findCaptionTarget, runAutoCaption } from "./autoCaption";
 import { TIMELINE_HEADER_WIDTH } from "./Timeline";
 
 function Divider() {
-  return <span className="mx-1 h-4 w-px shrink-0 bg-border" aria-hidden />;
+  return <span className="mx-1.5 h-4 w-px shrink-0 bg-border" aria-hidden />;
+}
+
+/** Satu klik: suara klip terpilih (atau klip bersuara terpanjang) dijadikan caption per kata. */
+function AutoCaptionButton() {
+  const [busy, setBusy] = React.useState(false);
+  const run = async () => {
+    const { project, selectedIds } = useEditor.getState();
+    const target = project && findCaptionTarget(project, selectedIds);
+    if (!target) {
+      toast.info("Belum ada klip yang bersuara", { description: "Tambahkan video atau audio yang berisi ucapan ke timeline dulu." });
+      return;
+    }
+    setBusy(true);
+    try {
+      await runAutoCaption(target.id);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Button
+      size="sm"
+      onClick={run}
+      disabled={busy}
+      title="Caption otomatis: ubah ucapan di klip terpilih (atau klip bersuara terpanjang) menjadi teks caption. Bahasa ucapan diatur di panel Properti klip, bagian Caption otomatis (bawaan: Indonesia)"
+    >
+      {busy ? <LoaderCircle className="size-3.5 animate-spin" /> : <Captions className="size-3.5 text-primary" />}
+      {busy ? "Mentranskripsi…" : "Caption otomatis"}
+    </Button>
+  );
 }
 
 export function Toolbar() {
@@ -70,7 +106,7 @@ export function Toolbar() {
   const fromSlider = (value: number) => MIN_PX_PER_SEC * Math.pow(MAX_PX_PER_SEC / MIN_PX_PER_SEC, value);
 
   return (
-    <div role="toolbar" aria-label="Alat timeline" className="flex h-9 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-border px-2">
+    <div role="toolbar" aria-label="Alat timeline" className="flex h-10 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-border px-2">
       <IconButton label="Alat pilih: klik untuk memilih, seret area kosong untuk kotak seleksi" active>
         <MousePointer2 />
       </IconButton>
@@ -136,6 +172,8 @@ export function Toolbar() {
       <IconButton label="Tambah track audio" onClick={() => addTrack("audio")}>
         <Music />
       </IconButton>
+      <Divider />
+      <AutoCaptionButton />
 
       <div className="flex-1" />
 
@@ -146,15 +184,14 @@ export function Toolbar() {
       <IconButton label="Perkecil timeline" onClick={() => setPxPerSec(pxPerSec / 1.4)}>
         <ZoomOut />
       </IconButton>
-      <input
-        type="range"
+      <Slider
         aria-label="Zoom timeline"
-        className="w-28 shrink-0 cursor-pointer"
+        className="w-24 shrink-0"
         min={0}
         max={1}
         step={0.01}
         value={sliderValue}
-        onChange={(event) => setPxPerSec(fromSlider(Number(event.target.value)))}
+        onChange={(value) => setPxPerSec(fromSlider(value))}
       />
       <IconButton label="Perbesar timeline" onClick={() => setPxPerSec(pxPerSec * 1.4)}>
         <ZoomIn />

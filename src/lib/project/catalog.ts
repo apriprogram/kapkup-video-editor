@@ -101,6 +101,23 @@ export const TRANSITION_IDS = [
   "shutter",
   "flip",
   "pop",
+  "wipe-right",
+  "wipe-up",
+  "diagonal",
+  "clock",
+  "corner",
+  "diamond",
+  "star",
+  "blinds",
+  "cube-left",
+  "cube-up",
+  "door",
+  "squeeze",
+  "bounce",
+  "elastic",
+  "zoom-rotate",
+  "tv",
+  "hue-spin",
 ] as const;
 export type TransitionId = (typeof TRANSITION_IDS)[number];
 
@@ -108,10 +125,12 @@ export const TRANSITION_CATEGORIES = [
   { id: "cahaya", label: "Cahaya" },
   { id: "kamera", label: "Kamera" },
   { id: "gaya", label: "Gaya" },
+  { id: "3d", label: "3D" },
   { id: "dasar", label: "Dasar" },
   { id: "geser", label: "Geser" },
   { id: "zoom", label: "Zoom" },
   { id: "sapuan", label: "Sapuan" },
+  { id: "bentuk", label: "Bentuk" },
 ] as const;
 
 export const TRANSITIONS: CatalogEntry<TransitionId>[] = [
@@ -143,8 +162,25 @@ export const TRANSITIONS: CatalogEntry<TransitionId>[] = [
   { id: "zoom-out", label: "Zoom keluar", category: "zoom", hint: "Klip baru mengecil ke tempatnya" },
   { id: "spin", label: "Putar", category: "zoom", hint: "Berputar sambil berganti" },
   { id: "wipe-left", label: "Sapu kiri", category: "sapuan", hint: "Tersingkap dari kanan ke kiri" },
+  { id: "wipe-right", label: "Sapu kanan", category: "sapuan", hint: "Tersingkap dari kiri ke kanan" },
   { id: "wipe-down", label: "Sapu bawah", category: "sapuan", hint: "Tersingkap dari atas ke bawah" },
-  { id: "circle", label: "Lingkaran", category: "sapuan", hint: "Membuka dari tengah" },
+  { id: "wipe-up", label: "Sapu atas", category: "sapuan", hint: "Tersingkap dari bawah ke atas" },
+  { id: "diagonal", label: "Sapu miring", category: "sapuan", hint: "Tersingkap miring dari sudut kiri atas" },
+  { id: "clock", label: "Jarum jam", category: "sapuan", hint: "Tersingkap berputar seperti jarum jam", popular: true },
+  { id: "blinds", label: "Tirai tegak", category: "sapuan", hint: "Bilah-bilah tegak membuka" },
+  { id: "circle", label: "Lingkaran", category: "bentuk", hint: "Membuka dari tengah" },
+  { id: "corner", label: "Dari sudut", category: "bentuk", hint: "Lingkaran membesar dari sudut kiri atas" },
+  { id: "diamond", label: "Berlian", category: "bentuk", hint: "Membuka berbentuk belah ketupat" },
+  { id: "star", label: "Bintang", category: "bentuk", hint: "Membuka berbentuk bintang" },
+  { id: "cube-left", label: "Kubus ke kiri", category: "3d", hint: "Berputar seperti sisi kubus ke kiri", popular: true },
+  { id: "cube-up", label: "Kubus ke atas", category: "3d", hint: "Berputar seperti sisi kubus ke atas" },
+  { id: "door", label: "Pintu", category: "3d", hint: "Klip baru mengayun masuk seperti daun pintu" },
+  { id: "squeeze", label: "Jepit", category: "geser", hint: "Klip lama menyempit, klip baru melebar" },
+  { id: "bounce", label: "Jatuh memantul", category: "geser", hint: "Klip baru jatuh dari atas lalu memantul", popular: true },
+  { id: "elastic", label: "Geser kenyal", category: "geser", hint: "Mendorong dari kanan lalu sedikit melewati batas" },
+  { id: "zoom-rotate", label: "Zoom putar", category: "zoom", hint: "Mendekat sambil berputar sedikit" },
+  { id: "tv", label: "TV mati", category: "gaya", hint: "Menyempit jadi garis seperti TV dimatikan, lalu menyala" },
+  { id: "hue-spin", label: "Putar warna", category: "gaya", hint: "Warna berputar saat berbaur" },
 ];
 
 /** Nilai penyesuaian; semua berpusat di 0 = tanpa perubahan. */

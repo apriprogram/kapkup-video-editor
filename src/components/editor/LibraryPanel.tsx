@@ -1,6 +1,20 @@
 "use client";
 
-import { Blend, Captions, Film, ImageIcon, LoaderCircle, Music, Plus, SlidersHorizontal, Sparkles, Trash2, Type, Upload } from "lucide-react";
+import {
+  AudioLines,
+  Blend,
+  Captions,
+  Film,
+  ImageIcon,
+  LoaderCircle,
+  Music,
+  Plus,
+  SlidersHorizontal,
+  Sparkles,
+  Trash2,
+  Type,
+  Upload,
+} from "lucide-react";
 import * as React from "react";
 import { toast } from "sonner";
 import { parseSrt, parseVtt } from "@remotion/captions";
@@ -22,16 +36,19 @@ import { EFFECT_RENDERERS, TRANSITION_RENDERERS, adjustFilter, temperatureMatrix
 import { useEditor } from "@/store/editor";
 import { Button } from "@/components/ui/button";
 import { ASSET_DRAG_TYPE, FX_DRAG_TYPE, TRANSITION_DRAG_TYPE, type FxDragPayload } from "./drag";
+import { TtsPanel } from "./TtsPanel";
 import { useHoverClock } from "./useHoverClock";
 
 
 
-type Tab = "media" | "audio" | "text" | "effects" | "transitions" | "adjust";
+type Tab = "media" | "audio" | "text" | "tts" | "effects" | "transitions" | "adjust";
 
 const TABS: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: "media", label: "Media", icon: Film },
   { id: "audio", label: "Audio", icon: Music },
   { id: "text", label: "Teks", icon: Type },
+  // Teks jadi suara (TTS).
+  { id: "tts", label: "Suara", icon: AudioLines },
   { id: "effects", label: "Efek", icon: Sparkles },
   { id: "transitions", label: "Transisi", icon: Blend },
   { id: "adjust", label: "Penyesuaian", icon: SlidersHorizontal },
@@ -74,7 +91,7 @@ function Categories<T extends string>({
           aria-current={value === item.id}
           onClick={() => onChange(item.id)}
           className={cn(
-            "cursor-pointer truncate rounded-md px-2 py-1.5 text-left text-xs font-medium",
+            "cursor-pointer rounded-md px-2 py-1.5 text-left text-xs leading-tight font-medium break-words transition-colors",
             value === item.id ? "bg-muted text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground",
           )}
         >
@@ -113,7 +130,7 @@ function Tile({
       className="group cursor-grab active:cursor-grabbing"
       title={hint}
     >
-      <div className="relative aspect-[4/5] overflow-hidden rounded-md bg-stage">
+      <div className="relative aspect-[4/5] overflow-hidden rounded-lg bg-stage ring-1 ring-border transition-shadow ring-inset group-hover:ring-2 group-hover:ring-primary">
         {children}
         <button
           type="button"
@@ -125,7 +142,7 @@ function Tile({
           <Plus className="size-4" />
         </button>
       </div>
-      <p className="truncate pt-1 text-[11px] text-muted-foreground">{label}</p>
+      <p className="truncate pt-1 text-center text-[11px] text-muted-foreground group-hover:text-foreground">{label}</p>
     </li>
   );
 }
@@ -373,7 +390,10 @@ function TextTab() {
             <Plus className="size-4 text-muted-foreground" />
           </button>
         ))}
-        <p className="px-1 pt-1 text-xs text-muted-foreground">Teks ditambahkan di posisi garis waktu saat ini.</p>
+        <p className="px-1 pt-1 text-xs text-muted-foreground">
+          Teks ditambahkan di posisi garis waktu saat ini. Supaya teks dibacakan, pilih klip teksnya lalu buka bagian Teks jadi suara
+          di panel Properti, atau pakai tab Suara.
+        </p>
         <div className="mt-2 flex flex-col gap-2 border-t border-border pt-3">
           <p className="px-1 text-xs font-semibold">Caption per kata</p>
           <input
@@ -564,8 +584,8 @@ function AdjustTab() {
 export function LibraryPanel({ projectId }: { projectId: string }) {
   const [tab, setTab] = React.useState<Tab>("media");
   return (
-    <section aria-label="Pustaka" className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-md bg-surface">
-      <div role="tablist" aria-label="Menu" className="flex h-[52px] shrink-0 items-stretch gap-0.5 overflow-x-auto border-b border-border px-1.5">
+    <section aria-label="Pustaka" className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl bg-surface">
+      <div role="tablist" aria-label="Menu" className="flex h-14 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-border px-1.5">
         {TABS.map((item) => {
           const Icon = item.icon;
           return (
@@ -576,8 +596,8 @@ export function LibraryPanel({ projectId }: { projectId: string }) {
               aria-selected={tab === item.id}
               onClick={() => setTab(item.id)}
               className={cn(
-                "flex min-w-[58px] cursor-pointer flex-col items-center justify-center gap-0.5 rounded-md px-2 text-[11px] font-medium",
-                tab === item.id ? "text-primary" : "text-muted-foreground hover:text-foreground",
+                "flex h-11 min-w-[58px] cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg px-2 text-[11px] font-medium transition-colors",
+                tab === item.id ? "bg-muted text-primary" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
               )}
             >
               <Icon className="size-[18px]" />
@@ -590,6 +610,7 @@ export function LibraryPanel({ projectId }: { projectId: string }) {
         {tab === "media" && <AssetsTab projectId={projectId} audio={false} />}
         {tab === "audio" && <AssetsTab projectId={projectId} audio />}
         {tab === "text" && <TextTab />}
+        {tab === "tts" && <TtsPanel projectId={projectId} />}
         {tab === "effects" && <EffectsTab />}
         {tab === "transitions" && <TransitionsTab />}
         {tab === "adjust" && <AdjustTab />}

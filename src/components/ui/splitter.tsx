@@ -12,10 +12,13 @@ export function Splitter({
   orientation,
   label,
   onDrag,
+  style,
 }: {
   orientation: "vertical" | "horizontal";
   label: string;
   onDrag: (delta: number) => void;
+  /** Mis. `gridArea` bila pembatas ditaruh di dalam grid. */
+  style?: React.CSSProperties;
 }) {
   const vertical = orientation === "vertical";
   const [dragging, setDragging] = React.useState(false);
@@ -61,9 +64,10 @@ export function Splitter({
           onDrag(step);
         }
       }}
+      style={style}
       className={cn(
-        "group relative z-10 shrink-0 touch-none",
-        vertical ? "w-1 cursor-col-resize" : "h-1 cursor-row-resize",
+        "group relative z-10 shrink-0 touch-none focus-visible:outline-none",
+        vertical ? "w-1.5 cursor-col-resize" : "h-1.5 cursor-row-resize",
       )}
     >
       <span

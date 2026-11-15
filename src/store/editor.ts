@@ -56,6 +56,8 @@ type EditorState = {
   selectedIds: string[];
   /** Media yang dipilih di panel Media (terpisah dari klip terpilih di timeline). */
   selectedAssetIds: string[];
+  /** Id klip yang transisi masuknya sedang dipilih di timeline (kotak pengaturnya terbuka), atau null. */
+  transitionEditId: string | null;
   frame: number;
   playing: boolean;
   pxPerSec: number;
@@ -79,6 +81,8 @@ type EditorState = {
 
   select: (id: string, additive?: boolean) => void;
   clearSelection: () => void;
+  /** Memilih transisi masuk sebuah klip (dan klipnya), atau menutup pilihannya dengan null. */
+  editTransition: (id: string | null) => void;
   setFrame: (frame: number) => void;
   setPlaying: (playing: boolean) => void;
   setPxPerSec: (value: number) => void;
@@ -99,7 +103,7 @@ type EditorState = {
   trimToPlayhead: (side: "start" | "end") => void;
   duplicateSelected: () => void;
   setCover: (ms: number | null) => void;
-  addAssetToTimeline: (assetId: string, target?: { trackId?: string; startMs?: number }) => void;
+  addAssetToTimeline: (assetId: string, target?: { trackId?: string; startMs?: number; freeTrack?: boolean }) => void;
   addText: (text: string, style?: Partial<TextStyle>) => void;
   addCaptions: (words: CaptionWord[], placement: { startMs: number; inMs: number; durationMs: number }) => void;
   addFx: (
@@ -175,6 +179,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   saveState: "saved",
   selectedIds: [],
   selectedAssetIds: [],
+  transitionEditId: null,
   frame: 0,
   playing: false,
   pxPerSec: 60,
@@ -291,15 +296,18 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   select: (id, additive = false) =>
     set((state) => {
-      if (!additive) return { selectedIds: [id], selectedAssetIds: [] };
+      if (!additive) return { selectedIds: [id], selectedAssetIds: [], transitionEditId: null };
       return {
         selectedAssetIds: [],
+        transitionEditId: null,
         selectedIds: state.selectedIds.includes(id)
           ? state.selectedIds.filter((other) => other !== id)
           : [...state.selectedIds, id],
       };
     }),
-  clearSelection: () => set((state) => (state.selectedIds.length ? { selectedIds: [] } : state)),
+  clearSelection: () =>
+    set((state) => (state.selectedIds.length || state.transitionEditId ? { selectedIds: [], transitionEditId: null } : state)),
+  editTransition: (id) => set(id ? { selectedIds: [id], selectedAssetIds: [], transitionEditId: id } : { transitionEditId: null }),
   setFrame: (frame) => set((state) => (state.frame === frame ? state : { frame })),
   setPlaying: (playing) => set({ playing }),
   setPxPerSec: (value) => set({ pxPerSec: clamp(value, MIN_PX_PER_SEC, MAX_PX_PER_SEC) }),
@@ -323,7 +331,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     set((state) => ({ selectedIds: state.selectedIds.filter((id) => remaining.has(id)) }));
   },
 
-  selectMany: (ids) => set({ selectedIds: ids, selectedAssetIds: [] }),
+  selectMany: (ids) => set({ selectedIds: ids, selectedAssetIds: [], transitionEditId: null }),
 
   selectAsset: (assetId, additive = false) =>
     set((state) => ({
@@ -350,6 +358,12 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   deleteAnySelection: () => {
     const state = get();
+    // Transisi yang sedang dipilih dihapus lebih dulu; klipnya sendiri tetap ada.
+    if (state.transitionEditId) {
+      state.setTransition(state.transitionEditId, null);
+      set({ transitionEditId: null });
+      return;
+    }
     // Klip terpilih di timeline didahulukan; media dihapus hanya bila tidak ada klip yang dipilih.
     if (state.selectedIds.length > 0 || state.selectedAssetIds.length === 0) {
       state.deleteSelected();
@@ -467,7 +481,17 @@ export const useEditor = create<EditorState>((set, get) => ({
     const durationMs = asset.type === "image" ? 3000 : Math.max(100, asset.durationMs);
     const desired = target?.startMs ?? playheadMs(state);
     state.apply((draft) => {
-      const track = ensureTrack(draft, trackKindFor(asset.type), target?.trackId);
+      const kind = trackKindFor(asset.type);
+      // `freeTrack`: klip harus mulai tepat di waktu yang diminta (mis. suara untuk sebuah teks),
+      // jadi dipilih track yang kosong di rentang itu; kalau tidak ada, dibuat track baru.
+      const free = target?.freeTrack
+        ? (draft.tracks.find(
+            (candidate) =>
+              candidate.kind === kind &&
+              candidate.items.every((other) => other.startMs >= desired + durationMs || other.startMs + other.durationMs <= desired),
+          ) ?? insertTrack(draft, kind))
+        : null;
+      const track = free ?? ensureTrack(draft, kind, target?.trackId);
       const startMs = resolveStart(track, desired, durationMs);
       const base = { id, startMs, durationMs, fadeInMs: 0, fadeOutMs: 0 };
       const visual = {

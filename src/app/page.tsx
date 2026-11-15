@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRight, Clapperboard, Clock, FolderOpen, Plus, Search, Timer } from "lucide-react";
+import { ArrowUpRight, Clapperboard, Clock, FolderOpen, Plus, Search, Timer, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as React from "react";
@@ -17,9 +17,11 @@ const COMPANY = { name: "PT. Garuda Nexa Bahtera", url: "https://garudanexa.com"
 // tipis tanpa bayangan, tombol dan input setinggi 44px dengan sudut membulat.
 const GUTTER = "px-3 sm:px-6 lg:px-8";
 const CARD = "rounded-[20px] bg-surface ring-1 ring-inset ring-border max-sm:rounded-2xl";
+// Fokus input cukup ditandai garis tepi 1px. Tanda `!` perlu karena aturan
+// `:focus-visible` di globals.css berada di luar layer dan mengalahkan utilitas biasa.
 const FIELD =
   "h-11 w-full rounded-xl border border-border bg-surface px-3.5 text-[15px] text-foreground placeholder:text-muted-foreground " +
-  "hover:border-input focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none max-sm:text-[16px]";
+  "hover:border-input focus:border-primary focus:outline-none! max-sm:text-[16px]";
 const BUTTON =
   "inline-flex h-11 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold tracking-[-0.01em] " +
   "transition-colors disabled:pointer-events-none disabled:opacity-50";
@@ -54,9 +56,9 @@ function StatTile({ label, value, icon: Icon }: { label: string; value: string; 
   );
 }
 
-function ProjectCard({ project }: { project: ProjectSummary }) {
+function ProjectCard({ project, onDelete }: { project: ProjectSummary; onDelete: (project: ProjectSummary) => void }) {
   return (
-    <li>
+    <li className="relative">
       <Link
         href={`/editor/${project.id}`}
         className={cn(CARD, "group block p-2 transition-[box-shadow,background-color] hover:bg-muted hover:ring-input")}
@@ -91,7 +93,104 @@ function ProjectCard({ project }: { project: ProjectSummary }) {
           </span>
         </div>
       </Link>
+      {/* Di luar Link supaya klik tombol hapus tidak ikut membuka project. */}
+      <button
+        type="button"
+        onClick={() => onDelete(project)}
+        aria-label={`Hapus project ${project.name}`}
+        title="Hapus project"
+        className="absolute top-4 right-4 flex size-8 cursor-pointer items-center justify-center rounded-full bg-background/75 text-foreground backdrop-blur transition-colors before:absolute before:-inset-1.5 hover:bg-danger hover:text-primary-foreground"
+      >
+        <Trash2 className="size-4" aria-hidden />
+      </button>
     </li>
+  );
+}
+
+function DeleteDialog({
+  project,
+  onClose,
+  onDeleted,
+}: {
+  project: ProjectSummary;
+  onClose: () => void;
+  onDeleted: (id: string) => void;
+}) {
+  const ref = React.useRef<HTMLDialogElement>(null);
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    const dialog = ref.current;
+    if (dialog && !dialog.open) dialog.showModal();
+  }, []);
+
+  const remove = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/projects/${project.id}`, { method: "DELETE" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Gagal menghapus project");
+      onDeleted(project.id);
+    } catch (cause) {
+      setError((cause as Error).message);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <dialog
+      ref={ref}
+      aria-labelledby="delete-title"
+      aria-describedby="delete-description"
+      onCancel={(event) => {
+        // Esc tidak menutup dialog selagi penghapusan berjalan.
+        if (busy) event.preventDefault();
+      }}
+      onClose={onClose}
+      className={cn(CARD, "m-auto w-[calc(100%-1.5rem)] max-w-md p-5 text-foreground backdrop:bg-background/80 sm:p-6")}
+    >
+      <div className="flex items-start gap-3.5">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-danger/10 text-danger">
+          <Trash2 className="size-5" aria-hidden />
+        </span>
+        <div className="min-w-0">
+          <h2 id="delete-title" className="text-base font-semibold tracking-[-0.01em]">
+            Hapus project ini?
+          </h2>
+          <p id="delete-description" className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+            <span className="font-medium break-words text-foreground">{project.name}</span> beserta semua media dan hasil export di
+            dalamnya akan dihapus dari komputer kamu. Ini tidak bisa dibatalkan.
+          </p>
+        </div>
+      </div>
+      {error && (
+        <p role="alert" className="mt-4 text-sm text-danger">
+          {error}
+        </p>
+      )}
+      <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <button
+          type="button"
+          autoFocus
+          disabled={busy}
+          onClick={() => ref.current?.close()}
+          className={cn(BUTTON, "bg-surface text-foreground ring-1 ring-inset ring-border hover:bg-muted hover:ring-input")}
+        >
+          Batal
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={remove}
+          className={cn(BUTTON, "bg-danger/10 text-danger ring-1 ring-inset ring-danger/40 hover:bg-danger/20")}
+        >
+          <Trash2 className="size-4" aria-hidden />
+          {busy ? "Menghapus…" : "Hapus project"}
+        </button>
+      </div>
+    </dialog>
   );
 }
 
@@ -103,6 +202,14 @@ export default function HomePage() {
   const [creating, setCreating] = React.useState(false);
   const [formError, setFormError] = React.useState<string | null>(null);
   const [query, setQuery] = React.useState("");
+  const [toDelete, setToDelete] = React.useState<ProjectSummary | null>(null);
+
+  const removeFromList = (id: string) => {
+    setState((current) =>
+      current.status === "ready" ? { status: "ready", projects: current.projects.filter((project) => project.id !== id) } : current,
+    );
+    setToDelete(null);
+  };
 
   React.useEffect(() => {
     fetch("/api/projects", { cache: "no-store" })
@@ -148,10 +255,10 @@ export default function HomePage() {
           <span className="flex h-8 w-9 items-center justify-center">
             <Logo className="h-5" />
           </span>
-          <div className="leading-tight">
-            <p className="text-[15px] font-semibold tracking-[-0.01em]">Kapkup</p>
-            <p className="text-[11px] text-muted-foreground">Editor video</p>
-          </div>
+          <p className="flex items-baseline gap-2">
+            <span className="text-[15px] font-semibold tracking-[-0.01em]">Kapkup</span>
+            <span className="text-xs text-muted-foreground">Editor video</span>
+          </p>
         </div>
         <a
           href="#project-name"
@@ -302,12 +409,14 @@ export default function HomePage() {
           {shown.length > 0 && (
             <ul className={grid}>
               {shown.map((project) => (
-                <ProjectCard key={project.id} project={project} />
+                <ProjectCard key={project.id} project={project} onDelete={setToDelete} />
               ))}
             </ul>
           )}
         </section>
       </main>
+
+      {toDelete && <DeleteDialog key={toDelete.id} project={toDelete} onClose={() => setToDelete(null)} onDeleted={removeFromList} />}
 
       <footer
         className={cn(

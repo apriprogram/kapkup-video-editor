@@ -24,7 +24,7 @@ Project ada di `workspace/<id>/project.json`. Alur kerja:
 5. Periksa hasilnya dengan `npm run kapkup -- still <id> <ms> 0.2` lalu baca PNG di `workspace/<id>/cache/still-<ms>.png`. Skala 0.2 cukup dan hemat token.
 6. Export: `npm run kapkup -- export <id> [nama=nilai ...] [--format mp4|gif|mp3] [--out nama]`.
 
-Perintah lain: `new "Nama" [9:16|16:9|1:1|4:5]`, `transcribe <id> <idKlip> [model] [bahasa]` (caption otomatis; pemakaian pertama mengunduh Whisper, minta izin pengguna dulu).
+Perintah lain: `new "Nama" [9:16|16:9|1:1|4:5]`, `transcribe <id> <idKlip> [model] [bahasa]` (caption otomatis; Whisper dan model `small` sudah terunduh di komputer ini pada 13 November 2026, model lain masih perlu diunduh dan butuh izin pengguna dulu. Beri kode bahasa `id` untuk ucapan Indonesia: deteksi otomatis pernah menuliskannya dalam bahasa Inggris), `tts <id> "teks" [suara 0-9] [kecepatan] [id|en]` (teks ke suara; membuat file WAV di `media/` dan menambah asetnya, lalu klip `audio`-nya ditulis sendiri di `tracks`. Suara 0–4 perempuan, 5–9 laki-laki. Modelnya 123 MB di `.kapkup/tts`, sudah terunduh di komputer ini pada 13 November 2026).
 
 ### Aturan format
 
@@ -37,7 +37,9 @@ Sumber kebenaran: `src/lib/project/schema.ts` (zod) dan `checkProject()` di file
 - `startMs`/`durationMs` adalah posisi di timeline. Untuk video/audio, `inMs` adalah titik mulai di file sumber, dan `inMs + durationMs × speed` tidak boleh melebihi durasi aset.
 - `transform.x/y` adalah geseran dari tengah kanvas dalam piksel kanvas; `scale` 1 = ukuran pas.
 - `keyframes` (video, gambar, teks, caption): daftar `{ atMs, x, y, scale, rotation, opacity, easing }` terurut, `atMs` relatif terhadap awal klip. Bila ada keyframe, `transform` diabaikan. Zoom masuk = dua keyframe dengan `scale` 1 lalu 1.3.
-- `transitionIn` (video, gambar): transisi di awal klip dari klip sebelumnya yang menempel persis (`akhir = startMs`) di track yang sama.
+- `easing` pada keyframe (berlaku sampai keyframe berikutnya): `linear`, `ease-in`, `ease-out`, `ease-in-out`, `cubic-in`, `cubic-out`, `cubic-in-out`, `back-in`, `back-out` (melewati tujuan lalu kembali), `back-in-out`, `elastic-out`, `bounce-out`, `hold` (tahan lalu lompat). Rumusnya di `src/lib/project/animate.ts`.
+- Preset gerak (`src/lib/project/motion.ts`, `buildMotion()`) menghasilkan keyframe biasa: gerak kamera (zoom, geser, Ken Burns), gerak masuk kenyal/memantul, dan gerak berulang (goyang, melayang, denyut, ayun, putar).
+- `transitionIn` (video, gambar): `{ type, durationMs }` (100–5000 ms), transisi di awal klip dari klip sebelumnya yang menempel persis (`akhir = startMs`) di track yang sama. `null` = tanpa transisi.
 - `animationIn` / `animationOut` (video, gambar, teks): `{ type, durationMs }`, animasi saat klip muncul dan menghilang.
 - `backdropBlur` (video, gambar): angka > 0 menaruh salinan klip yang diburamkan memenuhi kanvas di belakangnya. Dipakai untuk video horizontal di kanvas vertikal: `fit: "contain"` + `backdropBlur: 40`.
 - `mask` (video, gambar): `{ shape, x, y, width, height, rotation, feather, radius, invert }` dalam piksel kanvas relatif terhadap tengah klip; bentuk: `rectangle`, `circle`, `split`, `filmstrip`, `star`, `heart`.
@@ -45,6 +47,7 @@ Sumber kebenaran: `src/lib/project/schema.ts` (zod) dan `checkProject()` di file
 - Klip `audio` punya `speed`, dan boleh memakai aset video yang bersuara (hasil "Pisahkan suara"; klip videonya diberi `volume: 0`).
 - `coverMs`: waktu frame sampul; gambarnya `cover.png` di folder project (dibuat lewat tombol Sampul).
 - Daftar id efek, transisi, animasi, dan preset warna: `src/lib/project/catalog.ts`.
+- `style.fontFamily` (teks, caption): nama font apa pun yang terpasang di komputer ini (daftarnya dari `GET /api/fonts`, dibaca `src/lib/server/fonts.ts`), atau font web yang filenya ada di `public/fonts`: Montserrat, Poppins, Zalando Sans Expanded (daftar di `src/lib/project/web-fonts.json`). Font web tampil sama di komputer mana pun; font sistem hanya di komputer yang memilikinya. Menambah font web: `npx tsx scripts/add-web-fonts.ts "<tautan css2 Google Fonts>"`.
 - `captions.words`: `{ text, startMs, endMs }` per kata; `pageMs` mengatur berapa lama kata dikelompokkan.
 - `variables`: `{{nama}}` di dalam teks diganti nilainya.
 
@@ -53,18 +56,26 @@ Sumber kebenaran: `src/lib/project/schema.ts` (zod) dan `checkProject()` di file
 - `src/remotion/` — komposisi video. Dipakai preview (Player) **dan** render. Hanya boleh impor relatif, karena dibundel terpisah oleh Remotion. `fx.ts` berisi cara menggambar efek/transisi sebagai fungsi murni dari nomor frame.
 - `src/lib/project/` — skema, katalog, animasi keyframe, caption (murni, tanpa React). Ikut dibundel render.
 - `src/lib/timeline/ops.ts` — logika timeline murni (tabrakan, snap, belah).
-- `src/lib/server/` — akses disk, FFmpeg, transkripsi. Hanya untuk route handler dan skrip.
+- `src/lib/server/` — akses disk, FFmpeg, transkripsi, teks ke suara. Hanya untuk route handler dan skrip. `transcribe.ts` dan `tts.ts` memuat paket natif, jadi hanya boleh diimpor dari CLI; route handler memakai `whisper-config.ts` / `tts-config.ts` dan menjalankan CLI lewat `runCli()` di `cli.ts`.
 - `src/store/editor.ts` — state editor (zustand + immer) dengan undo/redo.
 - `src/components/editor/` — panel editor. `scripts/` — render dan CLI (dijalankan dengan `tsx`).
+- `src/components/ui/` — komponen dasar. Dropdown selalu memakai `Select` (`select.tsx`) atau `SelectField`, bukan `<select>` bawaan; slider memakai `Slider` (`field.tsx`) karena bagian terisinya digambar dari variabel CSS `--fill`.
+- Transisi diatur langsung di timeline: klik lencananya membuka `TransitionPopover` (jenis, durasi, hapus) dan mengisi `transitionEditId` di store, sehingga tombol Delete menghapus transisinya, bukan klipnya. Garis putih di awal klip bisa diseret untuk durasi. Keyframe (belah ketupat kuning di klip) bisa diseret untuk menggeser waktunya; daftar dan lengkung geraknya ada di `MotionPanel.tsx`.
+- Durasi animasi masuk/keluar (`animationIn` / `animationOut`, 100–5000 ms) diatur di bagian atas tab Animasi, atau dengan menyeret bulatan biru di tepi atas klip terpilih di timeline (`startDurationDrag` di `Timeline.tsx`, dipakai juga untuk durasi transisi).
+- Teks jadi suara ada di dua tempat yang memakai `createSpeech()` (`speech.ts`): tab Suara di pustaka (`TtsPanel`) dan bagian "Teks jadi suara" di panel Properti klip teks (`TextSpeechSection`), yang menaruh suaranya tepat di awal klip teks lewat `addAssetToTimeline(..., { freeTrack: true })`.
+- Font web dimuat oleh `useWebFonts()` di `src/remotion/web-fonts.ts` (FontFace + `delayRender`), dipanggil dari komposisi supaya preview dan render sama-sama menunggu font. Dropdown font di editor (`fonts.ts`, `FontField` di `Inspector.tsx`) memakai `Select` dengan `searchable` dan pratinjau font.
+- Lembar kerja editor (`Workspace` di `Editor.tsx`) punya dua susunan, vertikal dan horizontal, lewat grid bernama. Urutan elemen di DOM harus sama di keduanya supaya player tidak dibuat ulang saat berganti.
 
 ## Hal yang mudah salah
 
 - FFmpeg yang dipakai adalah bawaan Remotion (`ffBin()` di `src/lib/server/media.ts`). Ia tidak punya filter `scdet`/`select`/`tile` dan tidak bisa menulis PCM mentah (`-f s16le`); pakai `-f wav`. JPEG perlu `format=yuvj420p`.
 - Jangan menamai token warna dengan awalan `clip-`: `bg-clip-text` adalah utilitas Tailwind dan membuat latar hilang. Token klip memakai awalan `item-`.
+- Aturan `:focus-visible` di `globals.css` berada di luar layer, jadi mengalahkan utilitas Tailwind biasa (`focus:outline-none` tidak berpengaruh). Pakai akhiran `!` (`focus:outline-none!`) bila memang perlu menimpanya.
 - Preview dan render harus identik: efek tidak boleh memakai `Math.random()` atau waktu nyata, hanya nomor frame (`random(seed)` dari Remotion).
 - Elemen video tidak boleh dibuat ulang saat state berubah: jaga susunan JSX tetap sama (lihat `TransitionLayer`).
 - Kotak seleksi di player (`StageOverlay.tsx`) membaca posisi dari atribut `data-kapkup-item` dan `data-kapkup-root` di komposisi. Jangan menghapus atribut itu.
 - Server dev kadang tetap memakai versi lama sebuah modul server setelah file diubah (terjadi pada `src/lib/server/media.ts`: ekspor baru "is not a function"). Kalau route memberi error seperti itu padahal kodenya benar, minta pengguna menjalankan ulang `npm run dev`; jangan mematikan server milik pengguna.
+- Beberapa perubahan beruntun dalam hitungan detik pada `globals.css` pernah membuat server dev menyajikan CSS setengah lama (13 November 2026). Kalau gaya baru tidak muncul, bandingkan dengan CSS yang disajikan (`/_next/static/chunks/src_app_globals_css_*.css`) dan simpan ulang file itu dengan satu perubahan kecil.
 - Di Windows, `rename` ke `project.json` bisa gagal sesaat; `writeProject()` sudah mencoba ulang. Jangan menulis file itu dengan cara lain dari kode server.
 - Di PowerShell, path berisi `[id]` harus memakai `-LiteralPath`.
 - Lebar/tinggi kanvas dan hasil export H.264 harus genap.
@@ -72,7 +83,11 @@ Sumber kebenaran: `src/lib/project/schema.ts` (zod) dan `checkProject()` di file
 
 ## Tampilan
 
+Font tampilan seluruh website adalah Poppins (dipilih pengguna pada 13 November 2026), dimuat lewat `@font-face` di `globals.css` dari `public/fonts/poppins`. Poppins lebih lebar daripada font sistem, jadi periksa label yang sempit saat menambah UI (kolom label panel Properti 76px).
+
 Tema gelap dengan token di `src/app/globals.css`; pakai kelas token (`bg-surface`, `text-muted-foreground`), bukan warna mentah. Editor memakai aksen cyan (`primary`); pengguna memutuskan mempertahankannya pada 12 November 2026, jadi jangan diganti ke kobalt tanpa diminta. Teks UI berbahasa Indonesia.
+
+Timeline mengikuti gambar acuan dari pengguna (13 November 2026): klip video ungu, audio biru tembus pandang dengan gelombang berbentuk batang, teks jingga, efek merah muda, garis waktu kuning dengan label waktu di penggaris, pegangan potong berupa batang kecil di ujung klip. Pengguna meminta tampilan yang ramping: track teks/caption/efek rendah (28px), garis fokus input 1px, slider tipis. Transisi ditandai kotak putih kecil bergambar dua segitiga di sambungan klip.
 
 Halaman depan memakai tema Garuda Nexa (kelas `.theme-garuda` di `globals.css`, menimpa token yang sama): kanvas `#08090b`, kartu `rounded-[20px]` dengan `ring-1 ring-inset ring-border` tanpa bayangan, tombol dan input `h-11 rounded-xl`, aksen kobalt `#5553ff`. Sumbernya panel admin di `..\Garuda Nexa\src\styles\admin.css`. Editor tetap memakai token dasar (aksen cyan). Footer: "© tahun PT. Garuda Nexa Bahtera. Semua hak dilindungi." dengan tautan ke garudanexa.com.
 

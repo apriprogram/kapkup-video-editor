@@ -2,10 +2,42 @@
 
 import * as React from "react";
 import { clamp, cn } from "@/lib/utils";
+import { Select, type SelectOption } from "./select";
 
+// Warna garis tepi saat fokus diatur di globals.css (aturan :focus-visible untuk kolom isian).
 const inputClass =
-  "h-7 w-full rounded-md border border-input bg-background px-2 text-xs text-foreground " +
-  "placeholder:text-muted-foreground disabled:opacity-40";
+  "h-7 w-full rounded-md border border-border bg-background px-2 text-xs text-foreground transition-colors " +
+  "placeholder:text-muted-foreground hover:border-input disabled:opacity-40";
+
+type SliderProps = {
+  id?: string;
+  value: number;
+  onChange: (value: number) => void;
+  min: number;
+  max: number;
+  step?: number;
+  className?: string;
+  "aria-label"?: string;
+};
+
+/** Slider ramping; bagian yang terisi digambar lewat variabel CSS `--fill` (lihat globals.css). */
+export function Slider({ value, onChange, min, max, step = 1, className, ...rest }: SliderProps) {
+  const shown = clamp(value, min, max);
+  const fill = max > min ? ((shown - min) / (max - min)) * 100 : 0;
+  return (
+    <input
+      {...rest}
+      type="range"
+      className={cn("min-w-0", className)}
+      style={{ "--fill": `${fill}%` } as React.CSSProperties}
+      min={min}
+      max={max}
+      step={step}
+      value={shown}
+      onChange={(event) => onChange(Number(event.target.value))}
+    />
+  );
+}
 
 export function Section({
   title,
@@ -31,7 +63,8 @@ export function Section({
 export function Row({ label, htmlFor, children }: { label: string; htmlFor?: string; children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-2">
-      <label htmlFor={htmlFor} className="w-16 shrink-0 text-xs text-muted-foreground">
+      {/* 76px: label terpanjang ("Fade masuk", "Warna sorot") muat satu baris dengan Poppins 12px. */}
+      <label htmlFor={htmlFor} className="w-[76px] shrink-0 text-xs text-muted-foreground">
         {label}
       </label>
       <div className="flex min-w-0 flex-1 items-center gap-2">{children}</div>
@@ -104,16 +137,7 @@ export function SliderField({ label, value, onChange, min, max, step = 1, digits
   const id = React.useId();
   return (
     <Row label={label} htmlFor={id}>
-      <input
-        id={id}
-        type="range"
-        className="h-7 min-w-0 flex-1 cursor-pointer"
-        min={min}
-        max={max}
-        step={step}
-        value={clamp(value, min, max)}
-        onChange={(event) => onChange(Number(event.target.value))}
-      />
+      <Slider id={id} className="flex-1" min={min} max={max} step={step} value={value} onChange={onChange} />
       <NumberInput aria-label={label} value={value} onChange={onChange} min={min} max={max} step={step} digits={digits} />
       {after}
     </Row>
@@ -150,22 +174,62 @@ export function SelectField<T extends string>({
   value,
   onChange,
   options,
+  searchable,
+  optionStyle,
 }: {
   label: string;
   value: T;
   onChange: (value: T) => void;
-  options: readonly { value: T; label: string }[];
+  options: readonly SelectOption<T>[];
+  /** Kotak pencarian di atas daftar, untuk daftar panjang. */
+  searchable?: boolean;
+  optionStyle?: (option: SelectOption<T>) => React.CSSProperties | undefined;
 }) {
-  const id = React.useId();
+  // Label tidak ditautkan dengan htmlFor: klik label pada tombol akan langsung membuka daftar.
   return (
-    <Row label={label} htmlFor={id}>
-      <select id={id} className={cn(inputClass, "cursor-pointer")} value={value} onChange={(event) => onChange(event.target.value as T)}>
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
+    <Row label={label}>
+      <Select aria-label={label} value={value} onChange={onChange} options={options} searchable={searchable} optionStyle={optionStyle} />
+    </Row>
+  );
+}
+
+/** Pilihan satu-dari-beberapa berupa deretan tombol ikon (mis. rata kiri/tengah/kanan). */
+export function ToggleField<T extends string>({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: T;
+  onChange: (value: T) => void;
+  /** `label` dibacakan screen reader dan tampil sebagai tooltip. */
+  options: readonly { value: T; label: string; icon: React.ReactNode }[];
+}) {
+  return (
+    <Row label={label}>
+      <div role="radiogroup" aria-label={label} className="flex h-7 min-w-0 flex-1 gap-0.5 rounded-md bg-background p-0.5">
+        {options.map((option) => {
+          const checked = option.value === value;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              role="radio"
+              aria-checked={checked}
+              aria-label={option.label}
+              title={option.label}
+              onClick={() => onChange(option.value)}
+              className={cn(
+                "flex h-6 min-w-0 flex-1 cursor-pointer items-center justify-center rounded transition-colors [&_svg]:size-4",
+                checked ? "bg-muted text-primary" : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {option.icon}
+            </button>
+          );
+        })}
+      </div>
     </Row>
   );
 }

@@ -5,7 +5,7 @@ type Variant = "primary" | "secondary" | "ghost" | "danger";
 type Size = "sm" | "md";
 
 const base =
-  "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md font-medium whitespace-nowrap transition-colors " +
+  "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg font-medium whitespace-nowrap transition-colors " +
   "disabled:pointer-events-none disabled:opacity-40 cursor-pointer select-none";
 
 const variants: Record<Variant, string> = {
@@ -25,8 +25,13 @@ export type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
   size?: Size;
 };
 
+/** Kelas tombol untuk elemen lain yang harus tampak seperti tombol, mis. tautan unduh. */
+export function buttonClass(variant: Variant = "secondary", size: Size = "md", className?: string): string {
+  return cn(base, variants[variant], sizes[size], className);
+}
+
 export function Button({ variant = "secondary", size = "md", className, type = "button", ...props }: ButtonProps) {
-  return <button type={type} className={cn(base, variants[variant], sizes[size], className)} {...props} />;
+  return <button type={type} className={buttonClass(variant, size, className)} {...props} />;
 }
 
 export type IconButtonProps = Omit<ButtonProps, "size"> & {

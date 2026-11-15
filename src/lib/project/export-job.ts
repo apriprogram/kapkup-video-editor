@@ -8,6 +8,8 @@ export type ExportJob = {
   error: string | null;
   startedAt: number;
   pid: number | null;
+  /** Ukuran file hasil dalam byte; diisi API saat export sudah selesai. */
+  sizeBytes?: number;
 };
 
 export const JOB_FILE = "exports/.job.json";

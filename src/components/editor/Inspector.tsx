@@ -23,8 +23,9 @@ import {
   Square,
   SquareSplitVertical,
   Star,
-  ZoomIn,
-  ZoomOut,
+  TextAlignCenter,
+  TextAlignEnd,
+  TextAlignStart,
 } from "lucide-react";
 import * as React from "react";
 import { toast } from "sonner";
@@ -62,40 +63,57 @@ import { findItem } from "@/lib/timeline/ops";
 import { clamp, cn, formatTime } from "@/lib/utils";
 import { pausePlayer, seekToMs, useEditor } from "@/store/editor";
 import { Button } from "@/components/ui/button";
-import { ColorField, NumberInput, Row, Section, SelectField, SliderField, TextArea, TextInput } from "@/components/ui/field";
+import { ColorField, NumberInput, Row, Section, SelectField, SliderField, TextArea, TextInput, ToggleField } from "@/components/ui/field";
 import { ANIMATION_RENDERERS, revealText } from "@/remotion/fx";
+import { CAPTION_LANGUAGES, readCaptionLanguage, runAutoCaption, saveCaptionLanguage, type CaptionLanguage } from "./autoCaption";
+import { fontPreviewStyle, useFontOptions } from "./fonts";
+import { MotionSection } from "./MotionPanel";
 import { alignItem, type AlignMode } from "./StageOverlay";
+import { TextSpeechSection } from "./TtsPanel";
 import { useHoverClock } from "./useHoverClock";
 
 // --- Pilihan ---
 
-const FONTS = [
-  "Arial",
-  "Arial Black",
-  "Segoe UI",
-  "Verdana",
-  "Tahoma",
-  "Trebuchet MS",
-  "Impact",
-  "Georgia",
-  "Times New Roman",
-  "Courier New",
-  "Comic Sans MS",
-].map((font) => ({ value: font, label: font }));
+/** Huruf A yang makin tebal: ikon untuk tingkat ketebalan font. */
+function WeightIcon({ stroke }: { stroke: number }) {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden>
+      <text
+        x="8"
+        y="12.5"
+        textAnchor="middle"
+        fontSize="12"
+        fontFamily="Arial, sans-serif"
+        fill="currentColor"
+        stroke="currentColor"
+        strokeWidth={stroke}
+        strokeLinejoin="round"
+      >
+        A
+      </text>
+    </svg>
+  );
+}
 
 const WEIGHTS = [
-  { value: "400", label: "Normal" },
-  { value: "600", label: "Agak tebal" },
-  { value: "700", label: "Tebal" },
-  { value: "800", label: "Lebih tebal" },
-  { value: "900", label: "Sangat tebal" },
+  { value: "400", label: "Normal", icon: <WeightIcon stroke={0} /> },
+  { value: "600", label: "Agak tebal", icon: <WeightIcon stroke={0.45} /> },
+  { value: "700", label: "Tebal", icon: <WeightIcon stroke={0.9} /> },
+  { value: "800", label: "Lebih tebal", icon: <WeightIcon stroke={1.4} /> },
+  { value: "900", label: "Sangat tebal", icon: <WeightIcon stroke={2} /> },
 ];
 
 const ALIGNS = [
-  { value: "left", label: "Kiri" },
-  { value: "center", label: "Tengah" },
-  { value: "right", label: "Kanan" },
+  { value: "left", label: "Rata kiri", icon: <TextAlignStart /> },
+  { value: "center", label: "Rata tengah", icon: <TextAlignCenter /> },
+  { value: "right", label: "Rata kanan", icon: <TextAlignEnd /> },
 ] as const;
+
+/** Dropdown font: font web bawaan Kapkup dan semua font yang terpasang di komputer ini, bisa dicari. */
+function FontField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const options = useFontOptions(value);
+  return <SelectField label="Font" value={value} onChange={onChange} options={options} searchable optionStyle={fontPreviewStyle} />;
+}
 
 const FITS = [
   { value: "contain", label: "Muat utuh" },
@@ -141,12 +159,6 @@ const KIND_LABEL: Record<Item["type"], string> = {
   adjustment: "Lapisan penyesuaian",
 };
 
-const LANGUAGES = [
-  { value: "auto", label: "Deteksi otomatis" },
-  { value: "id", label: "Indonesia" },
-  { value: "en", label: "Inggris" },
-] as const;
-
 type Update = (mutator: (item: Item) => void, key: string) => void;
 
 // --- Komponen kecil ---
@@ -162,7 +174,7 @@ function TabBar<T extends string>({
   onChange: (value: T) => void;
 }) {
   return (
-    <div role="tablist" aria-label="Bagian properti" className="flex h-9 shrink-0 items-center gap-4 overflow-x-auto border-b border-border px-3">
+    <div role="tablist" aria-label="Bagian properti" className="flex h-10 shrink-0 items-center gap-4 overflow-x-auto border-b border-border px-3">
       {tabs.map((tab) => (
         <button
           key={tab.id}
@@ -171,8 +183,10 @@ function TabBar<T extends string>({
           aria-selected={value === tab.id}
           onClick={() => onChange(tab.id)}
           className={cn(
-            "h-full cursor-pointer text-xs font-semibold whitespace-nowrap",
-            value === tab.id ? "text-primary" : "text-muted-foreground hover:text-foreground",
+            "relative h-full cursor-pointer text-xs font-semibold whitespace-nowrap transition-colors",
+            // Garis bawah menandai tab yang sedang dibuka.
+            "after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:rounded-full",
+            value === tab.id ? "text-foreground after:bg-primary" : "text-muted-foreground hover:text-foreground",
           )}
         >
           {tab.label}
@@ -195,7 +209,7 @@ function Segmented<T extends string>({
   label: string;
 }) {
   return (
-    <div role="tablist" aria-label={label} className="mx-3 mt-3 flex rounded-md bg-background p-0.5">
+    <div role="tablist" aria-label={label} className="mx-3 mt-3 flex rounded-lg bg-background p-0.5">
       {options.map((option) => (
         <button
           key={option.id}
@@ -204,7 +218,7 @@ function Segmented<T extends string>({
           aria-selected={value === option.id}
           onClick={() => onChange(option.id)}
           className={cn(
-            "h-6 flex-1 cursor-pointer rounded text-xs font-medium",
+            "h-6 flex-1 cursor-pointer rounded-md text-xs font-medium transition-colors",
             value === option.id ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground",
           )}
         >
@@ -320,7 +334,7 @@ const ALIGN_BUTTONS: { mode: AlignMode; label: string; icon: React.ComponentType
 ];
 
 function TransformGroup({ item, update }: { item: VisualItem; update: Update }) {
-  const { setTransform, applyZoom, clearKeyframes } = useEditor.getState();
+  const { setTransform } = useEditor.getState();
   const localMs = useLocalMs(item);
   const transform = transformAt(item, localMs);
   const set = (key: keyof Transform, value: number) => setTransform(item.id, { [key]: value });
@@ -405,26 +419,7 @@ function TransformGroup({ item, update }: { item: VisualItem; update: Update }) 
         )}
       </Section>
 
-      <Section
-        title="Zoom otomatis"
-        actions={<ResetButton disabled={item.keyframes.length === 0} onClick={() => clearKeyframes(item.id)} />}
-      >
-        <div className="flex gap-2">
-          <Button size="sm" className="flex-1" onClick={() => applyZoom(item.id, "in")}>
-            <ZoomIn className="size-3.5" />
-            Zoom masuk
-          </Button>
-          <Button size="sm" className="flex-1" onClick={() => applyZoom(item.id, "out")}>
-            <ZoomOut className="size-3.5" />
-            Zoom keluar
-          </Button>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          {item.keyframes.length > 0
-            ? `${item.keyframes.length} keyframe. Mengubah skala, posisi, rotasi, atau opasitas membuat keyframe di garis waktu.`
-            : "Membuat dua keyframe (awal dan akhir klip). Untuk gerak sendiri, klik ◇ di baris mana pun."}
-        </p>
-      </Section>
+      <MotionSection item={item} />
     </>
   );
 }
@@ -669,43 +664,14 @@ function SpeedPanel({ item }: { item: VideoItem | AudioItem }) {
 
 function AutoCaptionGroup({ item }: { item: VideoItem | AudioItem }) {
   const projectId = useEditor((state) => state.projectId);
-  const [language, setLanguage] = React.useState<(typeof LANGUAGES)[number]["value"]>("auto");
+  const [language, setLanguage] = React.useState<CaptionLanguage>(readCaptionLanguage);
   const [busy, setBusy] = React.useState(false);
 
   const run = async () => {
     if (!projectId || busy) return;
-    const endpoint = `/api/projects/${projectId}/transcribe`;
+    setBusy(true);
     try {
-      const status = (await fetch(endpoint, { cache: "no-store" }).then((response) => response.json())) as { ready: boolean };
-      if (
-        !status.ready &&
-        !window.confirm(
-          "Caption otomatis memakai Whisper yang berjalan di komputer ini.\n\n" +
-            "Pemakaian pertama mengunduh program Whisper dan modelnya (sekitar 500 MB, sekali saja). Lanjutkan?",
-        )
-      ) {
-        return;
-      }
-      setBusy(true);
-      // Project harus sudah tersimpan supaya server membaca posisi klip yang terbaru.
-      for (let i = 0; i < 40 && (useEditor.getState().dirty || useEditor.getState().saveState === "saving"); i++) {
-        await new Promise((resolve) => setTimeout(resolve, 250));
-      }
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ itemId: item.id, language: language === "auto" ? null : language }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error ?? "Transkripsi gagal");
-      if (data.words.length === 0) {
-        toast.info("Tidak ada ucapan yang terdeteksi di klip ini");
-        return;
-      }
-      useEditor.getState().addCaptions(data.words, data.placement);
-      toast.success(`Caption dibuat (${data.words.length} kata)`);
-    } catch (cause) {
-      toast.error("Caption otomatis gagal", { description: (cause as Error).message });
+      await runAutoCaption(item.id, language);
     } finally {
       setBusy(false);
     }
@@ -713,7 +679,16 @@ function AutoCaptionGroup({ item }: { item: VideoItem | AudioItem }) {
 
   return (
     <Section title="Caption otomatis">
-      <SelectField label="Bahasa" value={language} onChange={setLanguage} options={LANGUAGES} />
+      <SelectField
+        label="Bahasa"
+        value={language}
+        onChange={(value) => {
+          setLanguage(value);
+          // Tombol "Caption otomatis" di toolbar memakai pilihan yang sama.
+          saveCaptionLanguage(value);
+        }}
+        options={CAPTION_LANGUAGES}
+      />
       <Button size="sm" onClick={run} disabled={busy}>
         {busy ? <LoaderCircle className="size-3.5 animate-spin" /> : <Captions className="size-3.5" />}
         {busy ? "Mentranskripsi… (bisa beberapa menit)" : "Buat caption dari suara"}
@@ -801,7 +776,15 @@ function AnimationPanel({ item, update }: { item: VideoItem | ImageItem | TextIt
       : null
     : (current?.type ?? null);
   const options = ANIMATIONS.filter((entry) => !entry.textOnly || item.type === "text");
-  const maxSeconds = Math.max(0.1, Math.min(3, item.durationMs / (combo ? 2000 : 1000)));
+  const labelOf = (type: AnimationId) => ANIMATIONS.find((entry) => entry.id === type)?.label ?? type;
+  // Durasi masuk + keluar tidak boleh melebihi panjang klip; masing-masing paling lama 5 detik.
+  const maxSeconds = (otherMs: number) => Math.max(0.1, Math.min(5, (item.durationMs - otherMs) / 1000));
+  const setDuration = (which: "in" | "out", seconds: number) =>
+    update((target) => {
+      if (target.type !== "text" && target.type !== "video" && target.type !== "image") return;
+      const animation = which === "in" ? target.animationIn : target.animationOut;
+      if (animation) animation.durationMs = Math.round(seconds * 1000);
+    }, `animation.duration.${which}`);
 
   const change = (mutator: (target: VideoItem | ImageItem | TextItem) => void, key: string) =>
     update((target) => {
@@ -829,6 +812,40 @@ function AnimationPanel({ item, update }: { item: VideoItem | ImageItem | TextIt
           { id: "combo", label: "Kombinasi" },
         ]}
       />
+      <Section title="Durasi animasi">
+        {item.animationIn && (
+          <SliderField
+            label="Masuk dtk"
+            value={item.animationIn.durationMs / 1000}
+            min={0.1}
+            max={maxSeconds(item.animationOut?.durationMs ?? 0)}
+            step={0.05}
+            digits={2}
+            onChange={(v) => setDuration("in", v)}
+          />
+        )}
+        {item.animationOut && (
+          <SliderField
+            label="Keluar dtk"
+            value={item.animationOut.durationMs / 1000}
+            min={0.1}
+            max={maxSeconds(item.animationIn?.durationMs ?? 0)}
+            step={0.05}
+            digits={2}
+            onChange={(v) => setDuration("out", v)}
+          />
+        )}
+        <p className="text-xs text-muted-foreground">
+          {item.animationIn || item.animationOut
+            ? [
+                item.animationIn ? `Masuk: ${labelOf(item.animationIn.type)}` : null,
+                item.animationOut ? `Keluar: ${labelOf(item.animationOut.type)}` : null,
+              ]
+                .filter(Boolean)
+                .join(" · ") + ". Durasi juga bisa diseret di timeline: bulatan biru di tepi atas klip."
+            : "Pilih animasi di bawah dulu; pengatur durasinya muncul di sini."}
+        </p>
+      </Section>
       <Section title={combo ? "Masuk dan keluar sekaligus" : slot === "in" ? "Saat klip muncul" : "Saat klip menghilang"}>
         <p className="text-xs text-muted-foreground">Arahkan kursor ke ubin untuk melihat gerakannya.</p>
         <div className={grid}>
@@ -865,23 +882,6 @@ function AnimationPanel({ item, update }: { item: VideoItem | ImageItem | TextIt
             </React.Fragment>
           );
         })}
-        {selected && (
-          <SliderField
-            label="Durasi dtk"
-            value={(combo ? (item.animationIn?.durationMs ?? 500) : (current?.durationMs ?? 500)) / 1000}
-            min={0.1}
-            max={maxSeconds}
-            step={0.1}
-            digits={1}
-            onChange={(v) =>
-              change((target) => {
-                const durationMs = Math.round(v * 1000);
-                if (slot !== "out" && target.animationIn) target.animationIn.durationMs = durationMs;
-                if (slot !== "in" && target.animationOut) target.animationOut.durationMs = durationMs;
-              }, "duration")
-            }
-          />
-        )}
       </Section>
     </>
   );
@@ -944,10 +944,10 @@ function TextGroup({ item, update }: { item: TextItem; update: Update }) {
           }, "text")
         }
       />
-      <SelectField label="Font" value={style.fontFamily} onChange={(v) => setStyle("fontFamily", v)} options={FONTS} />
+      <FontField value={style.fontFamily} onChange={(v) => setStyle("fontFamily", v)} />
       <SliderField label="Ukuran" value={style.fontSize} min={12} max={300} onChange={(v) => setStyle("fontSize", v)} />
-      <SelectField label="Ketebalan" value={String(style.fontWeight)} onChange={(v) => setStyle("fontWeight", Number(v))} options={WEIGHTS} />
-      <SelectField label="Rata" value={style.align} onChange={(v) => setStyle("align", v)} options={ALIGNS} />
+      <ToggleField label="Ketebalan" value={String(style.fontWeight)} onChange={(v) => setStyle("fontWeight", Number(v))} options={WEIGHTS} />
+      <ToggleField label="Rata" value={style.align} onChange={(v) => setStyle("align", v)} options={ALIGNS} />
       <ColorField label="Warna" value={style.color} onChange={(v) => setStyle("color", v)} />
       <SliderField label="Garis tepi" value={style.strokeWidth} min={0} max={30} onChange={(v) => setStyle("strokeWidth", v)} />
       {style.strokeWidth > 0 && <ColorField label="Warna tepi" value={style.strokeColor} onChange={(v) => setStyle("strokeColor", v)} />}
@@ -974,9 +974,9 @@ function CaptionsGroup({ item, update }: { item: CaptionsItem; update: Update })
         {item.words.map((word) => word.text).join(" ") || "Belum ada kata."}
       </p>
       <SliderField label="Grup dtk" value={item.pageMs / 1000} min={0.2} max={5} step={0.1} digits={1} onChange={(v) => set((t) => void (t.pageMs = Math.round(v * 1000)), "pageMs")} />
-      <SelectField label="Font" value={style.fontFamily} onChange={(v) => set((t) => void (t.style.fontFamily = v), "font")} options={FONTS} />
+      <FontField value={style.fontFamily} onChange={(v) => set((t) => void (t.style.fontFamily = v), "font")} />
       <SliderField label="Ukuran" value={style.fontSize} min={12} max={300} onChange={(v) => set((t) => void (t.style.fontSize = v), "size")} />
-      <SelectField label="Ketebalan" value={String(style.fontWeight)} onChange={(v) => set((t) => void (t.style.fontWeight = Number(v)), "weight")} options={WEIGHTS} />
+      <ToggleField label="Ketebalan" value={String(style.fontWeight)} onChange={(v) => set((t) => void (t.style.fontWeight = Number(v)), "weight")} options={WEIGHTS} />
       <ColorField label="Warna" value={style.color} onChange={(v) => set((t) => void (t.style.color = v), "color")} />
       <SliderField label="Garis tepi" value={style.strokeWidth} min={0} max={30} onChange={(v) => set((t) => void (t.style.strokeWidth = v), "stroke")} />
       {style.strokeWidth > 0 && <ColorField label="Warna tepi" value={style.strokeColor} onChange={(v) => set((t) => void (t.style.strokeColor = v), "strokeColor")} />}
@@ -1102,6 +1102,7 @@ function TextInspector({ item, update }: { item: TextItem; update: Update }) {
         {tab === "text" ? (
           <>
             <TextGroup item={item} update={update} />
+            <TextSpeechSection item={item} />
             <TransformGroup item={item} update={update} />
             <Section title="Fade">
               <FadeFields item={item} update={update} />
@@ -1297,7 +1298,7 @@ export function Inspector({ style }: { style?: React.CSSProperties }) {
   );
 
   return (
-    <section aria-label="Properti" style={style} className="flex shrink-0 flex-col overflow-hidden rounded-md bg-surface">
+    <section aria-label="Properti" style={style} className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl bg-surface">
       {item ? (
         // Kunci per jenis klip: tab yang sedang dibuka tetap saat berpindah ke klip sejenis.
         <ItemInspector key={item.type} item={item} />
